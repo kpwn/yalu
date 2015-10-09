@@ -1,7 +1,7 @@
 #!/bin/sh
-printf Yalu Jailbreak
-printf (commit version here)
-printf Written By Luca Todesco
+echo Yalu Jailbreak
+echo (commit version here)
+echo Written By Luca Todesco
 function abort() {
 exit 254;
 }
