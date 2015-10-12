@@ -723,7 +723,7 @@ out = IOConnectTrap5(conn_, 0, ((uint64_t)where) - 32, 0x1337133742424242, 0x133
         kill(pp, 9);
     }
     
-    // And thus, we are on the lockscreen.
+    // And now, we are on the lockscreen.
     NSLog(@"alive?!");
     exit(0);
     
