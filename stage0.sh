@@ -6,7 +6,7 @@ function abort() {
 echo "Error. Exiting..." >&2
 exit 254;
 }
-echo "DISABLE FIND MY PHONE"
+echo "Error: Please disable Find My iPhone before continuing."
 ./wait_for_device.sh
 rm -rf tmp
 mkdir tmp
@@ -43,7 +43,7 @@ echo "Restoring backup..."
 )>/dev/null
 sleep 20
 ./wait_for_device.sh
-read -p "Press [Enter] key when your device finishes restoring..."
+read -p "Press [Enter] when your device finishes restoring."
 echo
 ./mount_ddi.sh
 ./bin/fetchsymbols -f "$(./bin/fetchsymbols -l 2>&1 | (grep armv7 || abort ) | tr ':' '\n'|tr -d ' '|head -1)" tmp/cache
@@ -61,4 +61,4 @@ cd ../..
 zcat ./data/bootstrap.tgz > ./tmp/bootstrap.tar
 ./bin/afcclient put ./tmp/bootstrap.tar PhotoData/KimJongCracks/bootstrap.tar
 ./bin/afcclient put ./data/tar PhotoData/KimJongCracks/tar
-echo "Tap on the jailreak icon to crash the kernel (or 0wn it if you're in luck!)"
+echo "Tap on the jailbreak icon to crash the kernel."
