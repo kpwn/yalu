@@ -1,7 +1,7 @@
 # Yalu Island
 A modified version of kpwn's Yalu, which I hope to help complete.
 
-This could be a complete untethered iOS 8.4.1 jailbreak.
+This could be a complete untethered iOS 8.4.1 jailbreak (if not too challenging :/)
 
 Credits for most of the development go to Luca Todesco / @qwertyoruiop.
 
