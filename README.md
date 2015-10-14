@@ -19,7 +19,7 @@ Do NOT rely on me to do most of the work, I have school too.
   - [x] Code injection scripts (stage0.sh and stage1.sh)
   - [x] dyld/magic process scripts and dylib dynamic libraries
 
-~~- [ ] Neuter AMFI device support~~
+- [x] ~~Neuter AMFi (Made for iPhone) device support~~
 - [ ] Get the jailbreak's ROP working on 64-bit devices (arm64)
 - [ ] Make Cydia or another process run untethered
 - [ ] Make a easy-to-use jailbreak tool
