@@ -100,7 +100,7 @@ rm -rf tmp_ddi
 
 echo "\033[33m* Compiling and copying binary file to device...\033[0m">&2
 
-lipo tmp/MobileReplayer -thin armv7s -output ./tmp/MobileReplayer
+lipo tmp/MobileReplayer -thin armv7 -output ./tmp/MobileReplayer
 ./bin/mbdbtool tmp $udid CameraRollDomain rm Media/PhotoData/KimJongCracks/a/a/MobileReplayer
 ./bin/mbdbtool tmp $udid CameraRollDomain put ./tmp/MobileReplayer Media/PhotoData/KimJongCracks/a/a/MobileReplayer || abort
 )
