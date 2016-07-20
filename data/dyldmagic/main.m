@@ -550,7 +550,7 @@ int main(int argc, const char * argv[]) {
     memcpy(buf + mh.sizeofcmds + sizeof(mh), &load_cmd_seg, load_cmd_seg.cmdsize);
     mh.sizeofcmds += load_cmd_seg.cmdsize;
     mh.ncmds++;
-#define STACK_OFFSET_BASE 0x8000 // 0x4000
+#define STACK_OFFSET_BASE 0x30000 // 0x4000
     uint32_t *stack = (uint32*)(buf + fsz + STACK_OFFSET_BASE);
     
     uint32_t *stackbase = stack;
@@ -624,10 +624,10 @@ int main(int argc, const char * argv[]) {
     RopAddR0(PUSH, 0xFFFE3577);
     StoreR0(PUSH, SEG_VAR(__dyld_start));
   
-    strcpy(argss->a, "/var/mobile/Media/drugs");
+    strcpy(argss->a, "/var/mobile/Media/amfistop64");
     
     void *indata;
-    const char *localPath = "../untether/untether";
+    const char *localPath = "../untether/amfistop64";
 	NSLog(@"Using %s as local copy (remote path %s)", localPath, argss->a);
     // read file (need to read on ROP too)
     int fd_local = open(localPath, O_RDWR);
