@@ -149,7 +149,8 @@ cd $SCRIPTPATH/data/dyldmagic
 echo "\033[33m* Copying files to device...\033[0m"
 cd $SCRIPTPATH
 ./bin/afcclient put ./data/dyldmagic/magic.dylib PhotoData/KimJongCracks/Library/PrivateFrameworks/GPUToolsCore.framework/GPUToolsCore
-./bin/afcclient put ./data/untether/untether drugs
+./bin/afcclient put ./data/untether/amfistop64 amfistop64
+./bin/afcclient put ./data/untether/untether64 untether64
 gzcat ./data/bootstrap.tgz > ./tmp/bootstrap.tar
 ./bin/afcclient put ./tmp/bootstrap.tar PhotoData/KimJongCracks/bootstrap.tar
 ./bin/afcclient put ./data/tar PhotoData/KimJongCracks/tar
