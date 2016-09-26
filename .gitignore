@@ -13,3 +13,9 @@ data/bootstrap.tgz.Z
 data/cydia/**
 data/ssh/**
 data/dyldmagic_amfid/magic64_amfid.dylib
+data/dyldmagic/magic.dylib
+data/dyldmagic/main
+data/dyldmagic/symbols.h
+data/that_guy/that_guy
+xcuserdata
+*.o
