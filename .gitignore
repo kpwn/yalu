@@ -6,10 +6,6 @@ main
 .DS_Store
 magic.dylib
 
-data/bootstrap.tgz
-
-data/bootstrap.tgz.Z
-
 data/cydia/**
 data/ssh/**
 data/dyldmagic_amfid/magic64_amfid.dylib
