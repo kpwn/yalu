@@ -160,7 +160,7 @@ $SCRIPTPATH/bin/jtool -e libsystem_kernel.dylib cache
 $SCRIPTPATH/bin/jtool -e libobjc.A.dylib cache
 $SCRIPTPATH/bin/jtool -e Foundation cache
 
-if [ ! -n "../tmp/dyld64" ]; then
+if [ -f cache64 ]; then
 	$SCRIPTPATH/bin/jtool -e libdyld.dylib cache64
 fi
 
