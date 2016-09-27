@@ -622,7 +622,27 @@ int main(int argc, const char * argv[]) {
     args_t* args_seg = (args_t*) 0x52000000;
 
 	// copyrights
-	NSLog(@"yalubreak iso841 - Kim Jong Cracks Research\nCredits:\nqwertyoruiop - sb escape & codesign bypass & initial kernel exploit\npanguteam: kernel vulns\nwindknown: kernel exploit & knows it's stuff\n_Morpheus_: this guy knows stuff\njk9356: kim jong cracks anthem\nJonSeals: crack rocks supply (w/ Frank & haifisch)\nih8sn0w: <3\nposixninja: <3\nxerub <3\nits_not_herpes because thanks god it wasnt herpes\neric fuck off\nKim Jong Un for being Dear Leader.\nRIP TTWJ / PYTECH / DISSIDENT\nSHOUT OUT @ ALL THE OLD GANGSTAS STILL IN THE JB SCENE\nHEROIN IS THE MEANING OF LIFE\n\nBRITTA ROLL UP [no its not pythech!] \n[i] iomasterport: 0x%08x / gasgauge user client: 0x%08x\njk++\n");
+	NSLog(@"yalubreak iso841 - Kim Jong Cracks Research\n"
+		"Credits:\n"
+		"qwertyoruiop: sb escape & codesign bypass & initial kernel exploit\n"
+		"mbazaliy: kernel exploit codesign bypass\n"
+		"in7egral: new ROP\n"
+		"tihmstar: support for iPhone 4s\n"
+		"panguteam: kernel vulns\n"
+		"windknown: kernel exploit & knows it's stuff\n"
+		"_Morpheus_: this guy knows stuff\n"
+		"jk9356: kim jong cracks anthem\n"
+		"JonSeals: crack rocks supply (w/ Frank & haifisch)\n"
+		"ih8sn0w: <3\n"
+		"posixninja: <3\n"
+		"xerub <3\n"
+		"its_not_herpes because thanks god it wasnt herpes\n"
+		"eric fuck off\n"
+		"Kim Jong Un for being Dear Leader.\n"
+		"RIP TTWJ / PYTECH / DISSIDENT\n"
+		"SHOUT OUT @ ALL THE OLD GANGSTAS STILL IN THE JB SCENE\n"
+		"HEROIN IS THE MEANING OF LIFE\n\n"
+		"BRITTA ROLL UP [no its not pythech!] \n");
 
     
     NSLog(@"sizeof(args_t) = %lx", sizeof(args_t));
