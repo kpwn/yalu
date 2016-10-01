@@ -191,6 +191,20 @@ gzcat ./data/bootstrap.tgz > ./tmp/bootstrap.tar
 ./bin/afcclient put ./data/tar PhotoData/KimJongCracks/tar
 
 echo "\033[96m>> Tap on the jailbreak icon to crash the kernel (or 0wn it if you're in luck!) <<\033[0m"
+echo ""
+echo "== FAQ"
+echo ""
+echo "Q: Blue screen and reboot"
+echo "A: Tap jailbreak icon again when device is back"
+echo ""
+echo "Q: After tapping, jailbreak icon disappeared and Cydia icon didn't appear"
+echo "A: Reboot device and tap jailbreak icon again"
+echo ""
+echo "Q: Jailbreak is gone after reboot"
+echo "A: Persistence is currently disabled, you have to tap jailbreak icon after every reboot"
+echo ""
+echo "Q: Jailbreak icon disappeared after reboot"
+echo "A: do run.sh again"
 }
 
 # Let's do this!
