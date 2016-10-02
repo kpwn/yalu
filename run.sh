@@ -168,7 +168,17 @@ echo "\033[33m* Compiling jailbreak files...\033[0m"
 #cd $SCRIPTPATH/data/that_guy
 #make
 cd $SCRIPTPATH/data/$UNTETHER
-./make.sh
+echo "\033[96m"
+read -r -p "Install dropbear (lightweight SSH)? [y/n]" response
+echo "\033[0m"
+if [[ $response =~ ^([yY][eE][sS]|[yY])$ ]]
+then
+	./make.sh DROPBEAR
+	../../bin/afcclient put ../dropbear PhotoData/KimJongCracks/dropbear
+	../../bin/afcclient put ../dropbearkey PhotoData/KimJongCracks/dropbearkey
+else
+	./make.sh
+fi
 cd $SCRIPTPATH/data/dyldmagic
 ./make.sh
 #cd $SCRIPTPATH/data/dyldmagic64
@@ -190,21 +200,25 @@ gzcat ./data/bootstrap.tgz > ./tmp/bootstrap.tar
 ./bin/afcclient put ./tmp/bootstrap.tar PhotoData/KimJongCracks/bootstrap.tar
 ./bin/afcclient put ./data/tar PhotoData/KimJongCracks/tar
 
-echo "\033[96m>> Tap on the jailbreak icon to crash the kernel (or 0wn it if you're in luck!) <<\033[0m"
 echo ""
-echo "== FAQ"
+echo "\033[33m== FAQ\033[0m"
 echo ""
-echo "Q: Blue screen and reboot"
-echo "A: Tap jailbreak icon again when device is back"
+echo "\033[33mQ: Blue screen and reboot\033[0m"
+echo "\033[33mA: Tap jailbreak icon again when device is back\033[0m"
 echo ""
-echo "Q: After tapping, jailbreak icon disappeared and Cydia icon didn't appear"
-echo "A: Reboot device and tap jailbreak icon again"
+echo "\033[33mQ: After tapping, jailbreak icon disappeared and Cydia icon didn't appear\033[0m"
+echo "\033[33mA: Reboot device and tap jailbreak icon again\033[0m"
 echo ""
-echo "Q: Jailbreak is gone after reboot"
-echo "A: Persistence is currently disabled, you have to tap jailbreak icon after every reboot"
+echo "\033[33mQ: Jailbreak is gone after reboot\033[0m"
+echo "\033[33mA: Persistence is currently disabled, you have to tap jailbreak icon after every reboot\033[0m"
 echo ""
-echo "Q: Jailbreak icon disappeared after reboot"
-echo "A: do run.sh again"
+echo "\033[33mQ: Jailbreak icon disappeared after reboot\033[0m"
+echo "\033[33mA: do run.sh again\033[0m"
+echo ""
+echo "\033[91mNOTE: This is tethered jailbreak, use Cydia wisely and don't brick your device!\033[0m"
+echo ""
+echo "\033[96m>> Now tap on the jailbreak icon to crash the kernel (or 0wn it if you're in luck!) <<\033[0m"
+
 }
 
 # Let's do this!

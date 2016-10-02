@@ -1009,7 +1009,6 @@ struct PatchFinder
 		uint32_t count = sizeof(payload) / sizeof(uint32_t);
 		for(uint32_t i=0; i < count; ++i)
 		{
-			//UTZLog(@"[%2d] %.16llX = %.8lX", i, offset, payloadAsUint32[i]); sync();
 			writeWhatWhere32(payloadAsUint32[i], offset);
 			offset += sizeof(uint32_t);
 		}
@@ -1214,6 +1213,101 @@ bool InstallBootstrap()
 	
 	return true;
 }
+
+#ifdef DROPBEAR
+#pragma mark -
+#pragma mark InstallDropbear
+
+bool CopyFile(const char *src_path, const char *dst_path)
+{
+	int inFile = open(src_path, O_RDONLY);
+	if ( inFile == -1 )
+	{
+		UTZLog(@"[ERR:UTL] CopyFile: unable to open for read %s", src_path);
+		return false;
+	}
+	
+	int outFile = open(dst_path, O_RDWR|O_CREAT|O_TRUNC);
+	if ( outFile == -1 )
+	{
+		UTZLog(@"[ERR:UTL] CopyFile: unable to open for write %s", dst_path);
+		return false;
+	}
+
+	int res = fcopyfile(inFile, outFile, 0, COPYFILE_ALL);
+	if ( res == -1 )
+	{
+		UTZLog(@"[ERR:UTL] CopyFile: unable to copy %s", src_path);
+		return false;
+	}
+}
+
+bool InstallDropbear()
+{
+	int f;
+	pid_t dropbear_pid;
+
+	UTZLog(@"[INF:DBR] Copy dropbear...");
+	CopyFile("/var/mobile/Media/PhotoData/KimJongCracks/dropbear", "/usr/bin/dropbear");
+
+	UTZLog(@"[INF:DBR] Fix permissions...");
+	chmod("/usr/bin/dropbear", 0777);
+	chmod("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", 0777);
+
+	mkdir("/etc/dropbear", 0755);
+	
+#if 0 // if you need RSA
+	UTZLog(@"[INF:DBR] Generate RSA...");
+	f = fork();
+	if (f == 0) {
+		execl("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", "dropbearkey", "-t", "rsa", "-f", "/etc/dropbear/dropbear_rsa_host_key", 0);
+		UTZLog(@"[INF:DBR]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+#endif
+
+#if 0 // if you need DSS
+	UTZLog(@"[INF:DBR] Generate DSS...");
+	f = fork();
+	if (f == 0) {
+		execl("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", "dropbearkey", "-t", "dsa", "-f", "/etc/dropbear/dropbear_dss_host_key", 0);
+		UTZLog(@"[INF:DBR]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+#endif
+
+#if 1 // if you need ECDSA
+	UTZLog(@"[INF:DBR] Generate ECDSA...");
+	f = fork();
+	if (f == 0) {
+		execl("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", "dropbearkey", "-t", "ecdsa", "-f", "/etc/dropbear/dropbear_ecdsa_host_key", 0);
+		UTZLog(@"[INF:DBR]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+#endif
+
+	char* dropbear_path = "/usr/bin/dropbear";
+	char *dropbear_argv[] = {
+		dropbear_path,
+		nullptr
+	};
+	
+	UTZLog(@"[INF:DBR] Spawn dropbear...");
+	int status = posix_spawn(&dropbear_pid, dropbear_path, nullptr, nullptr, dropbear_argv, environ);
+	if (status == 0)
+	{
+		UTZLog(@"[INF:DBR] ... done (PID = %d)", dropbear_pid);
+	}
+	else
+	{
+		UTZLog(@"[INF:DBR] posix_spawn(\"%s\") failed: %s (%d)", dropbear_argv[0], strerror(status), status);
+	}
+}
+
+#endif
 
 #pragma mark -
 #pragma mark main
@@ -1749,6 +1843,11 @@ bail:
 		
 		UTZLog(@"[INF:UTZ] Installing bootstrap...");
 		InstallBootstrap();
+
+	#ifdef DROPBEAR
+		UTZLog(@"[INF:UTZ] Installing dropbear...");
+		InstallDropbear();
+	#endif
 
 		UTZLog(@"[INF:UTZ] ALL YOUR BASE ARE BELONG TO US");
 	}
