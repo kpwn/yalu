@@ -1,0 +1,6 @@
+{
+  "name": "Yalu",
+  "tagline": "incomplete ios 8.4.1 jailbreak by Kim Jong Cracks (8.4.1 codesign & sandbox bypass w/ LPE to root & untether)",
+  "body": "# yalu\r\nsource code of an incomplete ios 8.4.1 jailbreak.\r\n\r\nRun the following command to download and try out the jailbreak on a Mac OS X system with XCODE.\r\n\r\n```git clone https://github.com/kpwn/yalu && cd yalu && ./run.sh```\r\n",
+  "note": "Don't delete this file! It's used internally to help with page regeneration."
+}
