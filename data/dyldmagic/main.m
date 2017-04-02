@@ -6,7 +6,7 @@
 //  Copyright (c) 2015 Kim Jong Cracks. All rights reserved.
 //
 
-//  thanks to windknown & pangu team
+//  thanks to windknown & pangu team.
 
 #include <mach-o/loader.h>
 #include <mach-o/ldsyms.h>
